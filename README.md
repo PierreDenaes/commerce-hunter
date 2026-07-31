@@ -48,6 +48,14 @@ CommerceHunter detecte automatiquement les **opportunites de creation, refonte o
 
 <img src="apps/web/public/screenshots/entreprises.png" alt="Tableau des entreprises analysees avec scores et priorites" width="800" />
 
+**Des tableaux a la carte** — filtres complets (priorite, site web, plage de scores, ville, effectifs, siege…), colonnes affichables ou masquables et redimensionnables a la souris, tri et pagination :
+
+<img src="apps/web/public/screenshots/colonnes-tableau.png" alt="Menu de selection des colonnes affichees du tableau" width="800" />
+
+**Export CSV sur mesure** — choisissez les colonnes a exporter parmi 18 (selection memorisee pour les prochains exports), en respectant les filtres actifs :
+
+<img src="apps/web/public/screenshots/export-csv.png" alt="Dialogue d'export CSV avec selection des colonnes" width="800" />
+
 **Recommandations IA** — synthese commerciale, actions priorisees par impact et brouillon d'email de prospection generes a la demande :
 
 <img src="apps/web/public/screenshots/recommandations-ia.png" alt="Recommandations IA : actions priorisees et brouillon d'email" width="800" />
