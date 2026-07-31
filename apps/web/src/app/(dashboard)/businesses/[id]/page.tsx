@@ -5,6 +5,10 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api-client";
 import { showApiError, showSuccess } from "@/lib/toast";
+import {
+  AiRecommendationsCard,
+  type AiRecommendations,
+} from "@/components/businesses/ai-recommendations-card";
 import { GlassCard } from "@/components/ui/glass-card";
 import { ScoreGauge } from "@/components/ui/score-gauge";
 import { SEORadarChart } from "@/components/ui/seo-radar-chart";
@@ -71,6 +75,14 @@ interface AnalysisDetail {
     hasProperHeadingHierarchy: boolean | null;
     internalLinkCount: number | null;
     externalLinkCount: number | null;
+    wordCount: number | null;
+    textRatio: number | null;
+    brokenLinksCount: number | null;
+    checkedLinksCount: number | null;
+  };
+  platform: {
+    detectedPlatform: string | null;
+    isFreeHosting: boolean | null;
   };
   security: {
     hasHsts: boolean | null;
@@ -81,7 +93,9 @@ interface AnalysisDetail {
   social: {
     hasOgTags: boolean | null;
     hasTwitterCard: boolean | null;
+    hasOgImage: boolean | null;
     structuredDataTypes: string[];
+    jsonLdInvalidCount: number | null;
   };
   scores: {
     seoScore: number | null;
@@ -90,6 +104,8 @@ interface AnalysisDetail {
   };
   contactEmails: string[];
   analyzedAt: string | null;
+  aiRecommendations: AiRecommendations | null;
+  aiRecommendationsAt: string | null;
 }
 
 interface BusinessDetail {
@@ -109,6 +125,7 @@ interface BusinessDetail {
   website: string | null;
   isHeadquarters: boolean;
   analysis: AnalysisDetail | null;
+  aiEnabled: boolean;
 }
 
 export default function BusinessDetailPage() {
@@ -279,11 +296,10 @@ export default function BusinessDetailPage() {
         </div>
       )}
 
-      <SplitLayout
-        ratio="left-heavy"
-        left={
-          <div className="space-y-6">
-            <GlassCard className="flex flex-col items-center gap-4">
+      {/* En-tête : score, radar et informations légales côte à côte
+          (mobile : empilés dans cet ordre) */}
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+            <GlassCard className="flex flex-col items-center justify-center gap-4">
               <h2 className="font-heading text-sm font-semibold text-muted-foreground">
                 Score Digital
               </h2>
@@ -313,12 +329,8 @@ export default function BusinessDetailPage() {
                 />
               </GlassCard>
             )}
-          </div>
-        }
-        right={
-          <div className="space-y-6">
           {/* Business info */}
-          <GlassCard>
+          <GlassCard className="md:col-span-2 xl:col-span-1">
             <h2 className="font-heading mb-4 font-semibold">
               Informations légales
             </h2>
@@ -372,10 +384,22 @@ export default function BusinessDetailPage() {
               )}
             </dl>
           </GlassCard>
+      </div>
 
-          {/* Analysis sections */}
+      {/* Recommandations IA — à la demande, si la clé est configurée côté serveur */}
+      {business.aiEnabled &&
+        a &&
+        (a.status === "COMPLETED" || a.status === "NO_WEBSITE") && (
+          <AiRecommendationsCard
+            businessId={business.id}
+            initial={a.aiRecommendations}
+            generatedAt={a.aiRecommendationsAt}
+          />
+        )}
+
+          {/* Analysis sections — colonnes façon masonry (1/2/3 selon l'écran) */}
           {a && (a.status === "COMPLETED" || ((a.status === "PENDING" || a.status === "RUNNING") && a.seoOnPage.title !== null)) && (
-            <>
+            <div className="mt-6 columns-1 gap-6 md:columns-2 xl:columns-3 [&>*]:mb-6 [&>*]:break-inside-avoid">
               <AnalysisSection title="Technique">
                 <CheckRow label="HTTPS" value={a.technical.isHttps} />
                 <TextRow
@@ -388,6 +412,13 @@ export default function BusinessDetailPage() {
                 />
                 <CheckRow label="robots.txt" value={a.technical.hasRobotsTxt} />
                 <CheckRow label="sitemap.xml" value={a.technical.hasSitemapXml} />
+                <TextRow label="Plateforme détectée" value={a.platform.detectedPlatform} />
+                {a.platform.isFreeHosting === true && (
+                  <TextRow
+                    label="Hébergement gratuit / page plateforme"
+                    value="Oui ⚠️"
+                  />
+                )}
               </AnalysisSection>
 
               <AnalysisSection title="SEO On-Page">
@@ -492,6 +523,18 @@ export default function BusinessDetailPage() {
                   label="Liens externes"
                   value={a.content.externalLinkCount?.toString()}
                 />
+                <TextRow
+                  label="Mots sur la page"
+                  value={a.content.wordCount?.toString()}
+                />
+                <TextRow
+                  label="Liens cassés"
+                  value={
+                    a.content.brokenLinksCount != null
+                      ? `${a.content.brokenLinksCount} / ${a.content.checkedLinksCount} testés${a.content.brokenLinksCount > 0 ? " ⚠️" : ""}`
+                      : null
+                  }
+                />
               </AnalysisSection>
 
               {/* Security */}
@@ -506,6 +549,13 @@ export default function BusinessDetailPage() {
               <AnalysisSection title="Social & Données structurées">
                 <CheckRow label="Open Graph" value={a.social.hasOgTags} />
                 <CheckRow label="Twitter Card" value={a.social.hasTwitterCard} />
+                <CheckRow label="Image de partage (og:image)" value={a.social.hasOgImage} />
+                {a.social.jsonLdInvalidCount != null && a.social.jsonLdInvalidCount > 0 && (
+                  <TextRow
+                    label="Données structurées invalides"
+                    value={`${a.social.jsonLdInvalidCount} bloc(s) ⚠️`}
+                  />
+                )}
                 {a.social.structuredDataTypes.length > 0 && (
                   <TextRow
                     label="Données structurées"
@@ -519,11 +569,11 @@ export default function BusinessDetailPage() {
                   />
                 )}
               </AnalysisSection>
-            </>
+            </div>
           )}
 
           {a && a.status === "NO_WEBSITE" && (
-            <GlassCard variant="subtle">
+            <GlassCard variant="subtle" className="mt-6">
               <p className="text-sm text-muted-foreground">
                 Aucun site web détecté pour cette entreprise. L&apos;analyse SEO
                 n&apos;est pas disponible.
@@ -532,7 +582,7 @@ export default function BusinessDetailPage() {
           )}
 
           {a && (a.status === "PENDING" || a.status === "RUNNING") && (
-            <GlassCard variant="subtle">
+            <GlassCard variant="subtle" className="mt-6">
               <div className="flex items-center gap-3">
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-warning border-t-transparent" />
                 <p className="text-sm text-warning">
@@ -543,15 +593,12 @@ export default function BusinessDetailPage() {
           )}
 
           {a && a.status === "FAILED" && (
-            <GlassCard variant="subtle">
+            <GlassCard variant="subtle" className="mt-6">
               <p className="text-sm text-destructive">
                 L&apos;analyse a échoué. Utilisez le bouton re-analyser.
               </p>
             </GlassCard>
           )}
-          </div>
-        }
-      />
 
       <AddToListDialog
         open={addToListOpen}

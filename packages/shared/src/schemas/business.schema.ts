@@ -43,6 +43,8 @@ export type BusinessQueryInput = z.infer<typeof BusinessQuerySchema>;
 // devient `some: {}` et exporterait les entreprises de toutes les organisations.
 export const ExportCsvQuerySchema = BusinessQuerySchema.extend({
   scanId: z.string().uuid(),
+  // Clés de colonnes séparées par des virgules (validées côté route)
+  columns: z.string().max(500).optional(),
 });
 
 export type ExportCsvQueryInput = z.infer<typeof ExportCsvQuerySchema>;

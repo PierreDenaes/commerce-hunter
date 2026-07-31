@@ -45,3 +45,16 @@ export const SEO_SCORE_POINTS = {
   hasSchemaLocalBusiness: 5,
   hasGoogleMapsEmbed: 3,
 } as const;
+
+// Malus qualité (2026-07) : ne pénalisent que les défauts détectés — les
+// analyses antérieures (champs null) ne sont pas affectées, les bons sites
+// gardent leur score.
+export const SEO_SCORE_PENALTIES = {
+  titleLengthSuboptimal: 3, // title présent mais hors 30-60 caractères
+  descriptionLengthSuboptimal: 3, // description présente mais hors 50-160
+  thinContent: 10, // moins de 100 mots visibles sur la page
+  invalidJsonLd: 3, // au moins un bloc JSON-LD malformé
+  perBrokenLink: 3, // par lien interne cassé…
+  maxBrokenLinksPenalty: 10, // …plafonné
+  freeHostingPresencePenalty: 30, // sous-domaine gratuit / page plateforme : présence dégradée (score présence 100 → 70)
+} as const;

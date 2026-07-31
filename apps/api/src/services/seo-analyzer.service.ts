@@ -1,6 +1,9 @@
 import * as cheerio from "cheerio";
 import type { FastifyBaseLogger } from "fastify";
-import { Agent } from "undici";
+// fetch et Agent DOIVENT venir du même package undici : passer un Agent du
+// package npm au fetch global de Node (undici interne, autre version) casse
+// la décompression et les headers selon la version de Node.
+import { Agent, fetch as undiciFetch, type Response as UndiciResponse } from "undici";
 import { withRetry } from "../utils/retry.js";
 
 // ─── Types ────────────────────────────────────────────────
@@ -53,6 +56,15 @@ export interface SeoAnalysisResult {
   structuredDataTypes: string[];
   // Contact
   contactEmails: string[];
+  // Content quality
+  wordCount: number;
+  textRatio: number;
+  hasOgImage: boolean;
+  jsonLdInvalidCount: number;
+  detectedPlatform: string | null;
+  isFreeHosting: boolean;
+  brokenLinksCount: number;
+  checkedLinksCount: number;
 }
 
 // ─── Constants ────────────────────────────────────────────
@@ -109,9 +121,12 @@ async function safeFetch(
   url: string,
   options: RequestInit & { dispatcher?: unknown },
   maxRedirects = MAX_REDIRECTS,
-): Promise<Response> {
+): Promise<UndiciResponse> {
   assertSafeUrl(url);
-  const res = await fetch(url, { ...options, redirect: "manual" } as RequestInit);
+  const res = await undiciFetch(url, {
+    ...options,
+    redirect: "manual",
+  } as Parameters<typeof undiciFetch>[1]);
   if (res.status >= 300 && res.status < 400 && maxRedirects > 0) {
     const location = res.headers.get("location");
     if (!location) return res;
@@ -232,6 +247,7 @@ export class SeoAnalyzerService {
     // ─── Links ────────────────────────────────────────────
     let internalLinkCount = 0;
     let externalLinkCount = 0;
+    const internalLinkUrls = new Set<string>();
     $("a[href]").each((_, el) => {
       const href = $(el).attr("href") ?? "";
       if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("tel:")) return;
@@ -239,6 +255,10 @@ export class SeoAnalyzerService {
         const linkUrl = new URL(href, finalUrl);
         if (linkUrl.hostname === parsedUrl.hostname) {
           internalLinkCount++;
+          linkUrl.hash = "";
+          if (linkUrl.protocol === "http:" || linkUrl.protocol === "https:") {
+            internalLinkUrls.add(linkUrl.toString());
+          }
         } else {
           externalLinkCount++;
         }
@@ -248,12 +268,37 @@ export class SeoAnalyzerService {
       }
     });
 
+    // ─── Liens cassés (échantillon de liens internes) ─────
+    const { brokenLinksCount, checkedLinksCount } = await this.checkBrokenLinks(
+      [...internalLinkUrls].filter((u) => u !== finalUrl),
+    );
+
     // ─── Social / OG ──────────────────────────────────────
     const hasOgTags = $('meta[property="og:title"]').length > 0;
     const hasTwitterCard = $('meta[name="twitter:card"]').length > 0;
+    const hasOgImage = Boolean(
+      $('meta[property="og:image"]').attr("content")?.trim(),
+    );
 
     // ─── Structured data types ────────────────────────────
     const structuredDataTypes = this.detectStructuredDataTypes($);
+    const jsonLdInvalidCount = this.countInvalidJsonLd($);
+
+    // ─── Contenu texte visible / dépendance JS ────────────
+    const bodyClone = $("body").clone();
+    bodyClone.find("script, style, noscript, svg, template, iframe").remove();
+    const visibleText = bodyClone.text().replace(/\s+/g, " ").trim();
+    const wordCount = visibleText ? visibleText.split(" ").length : 0;
+    // Part du texte visible dans le HTML total : très faible = contenu
+    // probablement rendu en JavaScript, mal indexable
+    const textRatio =
+      pageWeightBytes > 0
+        ? Math.round((Buffer.byteLength(visibleText, "utf8") / pageWeightBytes) * 1000) / 1000
+        : 0;
+
+    // ─── Plateforme / hébergement gratuit ─────────────────
+    const detectedPlatform = this.detectPlatform($, html);
+    const isFreeHosting = this.detectFreeHosting(parsedUrl.hostname);
 
     // ─── Contact emails ─────────────────────────────────
     const contactEmails = this.extractEmails($, html);
@@ -296,7 +341,116 @@ export class SeoAnalyzerService {
       hasTwitterCard,
       structuredDataTypes,
       contactEmails,
+      wordCount,
+      textRatio,
+      hasOgImage,
+      jsonLdInvalidCount,
+      detectedPlatform,
+      isFreeHosting,
+      brokenLinksCount,
+      checkedLinksCount,
     };
+  }
+
+  /**
+   * Teste un échantillon de liens internes (max 10, concurrence 3).
+   * HEAD d'abord, GET si la méthode est refusée. Un statut >= 400 ou une
+   * erreur réseau compte comme lien cassé.
+   */
+  private async checkBrokenLinks(
+    urls: string[],
+  ): Promise<{ brokenLinksCount: number; checkedLinksCount: number }> {
+    const sample = urls.slice(0, 10);
+    let broken = 0;
+    const CONCURRENCY = 3;
+
+    const checkOne = async (url: string): Promise<boolean> => {
+      const attempt = async (method: "HEAD" | "GET"): Promise<number> => {
+        const res = await safeFetch(url, {
+          method,
+          signal: AbortSignal.timeout(5_000),
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (compatible; CommerceHunter/1.0; +https://commercehunter.fr)",
+          },
+          // @ts-expect-error -- undici Agent type mismatch across versions
+          dispatcher: insecureTlsAgent,
+        });
+        return res.status;
+      };
+      try {
+        let status = await attempt("HEAD");
+        if (status === 405 || status === 501) {
+          status = await attempt("GET");
+        }
+        return status >= 400;
+      } catch {
+        return true;
+      }
+    };
+
+    for (let i = 0; i < sample.length; i += CONCURRENCY) {
+      const chunk = sample.slice(i, i + CONCURRENCY);
+      const results = await Promise.all(chunk.map(checkOne));
+      broken += results.filter(Boolean).length;
+    }
+
+    return { brokenLinksCount: broken, checkedLinksCount: sample.length };
+  }
+
+  /** Compte les blocs JSON-LD syntaxiquement invalides (ignorés par Google). */
+  private countInvalidJsonLd($: cheerio.CheerioAPI): number {
+    let invalid = 0;
+    $('script[type="application/ld+json"]').each((_, el) => {
+      const text = $(el).html();
+      if (!text?.trim()) return;
+      try {
+        JSON.parse(text);
+      } catch {
+        invalid++;
+      }
+    });
+    return invalid;
+  }
+
+  /** Détecte le CMS / la plateforme du site (meta generator + heuristiques). */
+  private detectPlatform($: cheerio.CheerioAPI, html: string): string | null {
+    const generator = $('meta[name="generator"]').attr("content")?.trim();
+    if (generator) return generator.slice(0, 100);
+
+    const lower = html.toLowerCase();
+    if (lower.includes("wp-content/") || lower.includes("wp-includes/")) return "WordPress";
+    if (lower.includes("cdn.shopify.com")) return "Shopify";
+    if (lower.includes("static.wixstatic.com") || lower.includes("wix.com")) return "Wix";
+    if (lower.includes("squarespace.com")) return "Squarespace";
+    if (lower.includes("/prestashop")) return "PrestaShop";
+    if (lower.includes("jimdo")) return "Jimdo";
+    if (lower.includes("webflow.com")) return "Webflow";
+    return null;
+  }
+
+  /**
+   * Détecte un hébergement sur sous-domaine gratuit ou page de plateforme :
+   * le commerce ne possède pas son adresse web — argument de prospection fort.
+   */
+  private detectFreeHosting(hostname: string): boolean {
+    const FREE_HOSTING_PATTERNS = [
+      /\.wixsite\.com$/,
+      /\.jimdofree\.com$/,
+      /\.jimdosite\.com$/,
+      /\.wordpress\.com$/,
+      /\.blogspot\./,
+      /\.webnode\./,
+      /\.e-monsite\.com$/,
+      /\.sitew\.com$/,
+      /\.weebly\.com$/,
+      /\.godaddysites\.com$/,
+      /\.business\.site$/,
+      /^(www\.)?facebook\.com$/,
+      /^(www\.)?instagram\.com$/,
+      /^(www\.)?pagesjaunes\.fr$/,
+    ];
+    return FREE_HOSTING_PATTERNS.some((p) => p.test(hostname));
   }
 
   private async checkResourceExists(url: string): Promise<boolean> {

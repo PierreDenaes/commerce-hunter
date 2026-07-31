@@ -241,6 +241,7 @@ NODE_ENV=development
 | Google Places | Non | Pas d'enrichissement téléphone/site/coordonnées | Payant au-delà du crédit mensuel gratuit |
 | Google PageSpeed | Non | Pas de métriques de performance | Gratuit avec clé |
 | SMTP | Non | Reset de mot de passe et invitations d'équipe inopérants | Gratuit (ex. Gmail App Password) |
+| Claude (Anthropic) | Non | Pas de recommandations IA (bouton masqué) — le reste de l'audit fonctionne | Payant à l'usage (~2-4 ct par génération, à la demande) |
 | Stripe | Non | **Billing dormant** : tout le monde est sur le plan « Self-hosted » illimité, la page abonnement et les tarifs sont masqués | N/A |
 
 **Mode self-hosted (recommandé)** : ne renseignez pas `STRIPE_SECRET_KEY` et buildez le web avec `NEXT_PUBLIC_BILLING_ENABLED=false`. Toutes les fonctionnalités sont alors incluses sans limite. Renseignez les variables `LEGAL_*` (voir `.env.example`) pour vos pages mentions légales / confidentialité.

@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { Prisma } from "@commercehunter/db";
 import { ExportCsvQuerySchema, BusinessIdParamSchema, UuidParamSchema } from "@commercehunter/shared";
+import { buildCsv, parseColumnsParam, type CsvBusinessRow } from "../utils/csv-export.js";
 import { renderAuditReport, type AuditReportData } from "@commercehunter/pdf";
 import { QuotaService } from "../services/quota.service.js";
 
@@ -85,6 +86,7 @@ export default async function exportRoutes(app: FastifyInstance) {
               digitalScore: true,
               priority: true,
               status: true,
+              contactEmails: true,
               analyzedUrl: true,
             },
           },
@@ -92,58 +94,11 @@ export default async function exportRoutes(app: FastifyInstance) {
         orderBy: sortMap[sortBy] ?? { name: "asc" },
       });
 
-      // Build CSV
-      const BOM = "\uFEFF"; // UTF-8 BOM for Excel
-      const headers = [
-        "Nom",
-        "SIRET",
-        "SIREN",
-        "Type",
-        "Code APE",
-        "Forme juridique",
-        "Effectifs",
-        "Adresse",
-        "Code postal",
-        "Ville",
-        "Téléphone",
-        "Site web",
-        "Siège social",
-        "Score SEO",
-        "Score Digital",
-        "Priorité",
-        "Statut analyse",
-      ];
-
-      const escapeCell = (val: string | null | undefined): string => {
-        if (val === null || val === undefined) return "";
-        const str = String(val);
-        if (str.includes('"') || str.includes(";") || str.includes("\n")) {
-          return `"${str.replace(/"/g, '""')}"`;
-        }
-        return str;
-      };
-
-      const rows = businesses.map((b) => [
-        escapeCell(b.name),
-        escapeCell(b.siret),
-        escapeCell(b.siren),
-        escapeCell(b.entityType),
-        escapeCell(b.apeCode),
-        escapeCell(b.legalForm),
-        escapeCell(b.employeesRange),
-        escapeCell(b.address),
-        escapeCell(b.postalCode),
-        escapeCell(b.city),
-        escapeCell(b.phone),
-        escapeCell(b.website),
-        b.isHeadquarters ? "Oui" : "Non",
-        escapeCell(b.analysis?.seoScore?.toString()),
-        escapeCell(b.analysis?.digitalScore?.toString()),
-        escapeCell(b.analysis?.priority),
-        escapeCell(b.analysis?.status),
-      ]);
-
-      const csv = BOM + [headers.join(";"), ...rows.map((r) => r.join(";"))].join("\n");
+      // Build CSV (colonnes sélectionnables via ?columns=)
+      const csv = buildCsv(
+        businesses as unknown as CsvBusinessRow[],
+        parseColumnsParam(parsed.data.columns),
+      );
 
       const filename = `commercehunter-export-${scan.name.replace(/[^a-zA-Z0-9]/g, "_")}.csv`;
 
@@ -186,6 +141,7 @@ export default async function exportRoutes(app: FastifyInstance) {
                   digitalScore: true,
                   priority: true,
                   status: true,
+                  contactEmails: true,
                 },
               },
             },
@@ -196,59 +152,11 @@ export default async function exportRoutes(app: FastifyInstance) {
 
       const businesses = entries.map((e) => e.business);
 
-      // Build CSV (same format as scan export)
-      const BOM = "\uFEFF";
-      const headers = [
-        "Nom",
-        "SIRET",
-        "SIREN",
-        "Type",
-        "Code APE",
-        "Forme juridique",
-        "Effectifs",
-        "Adresse",
-        "Code postal",
-        "Ville",
-        "Téléphone",
-        "Site web",
-        "Siège social",
-        "Score SEO",
-        "Score Digital",
-        "Priorité",
-        "Statut analyse",
-      ];
-
-      const escapeCell = (val: string | null | undefined): string => {
-        if (val === null || val === undefined) return "";
-        const str = String(val);
-        if (str.includes('"') || str.includes(";") || str.includes("\n")) {
-          return `"${str.replace(/"/g, '""')}"`;
-        }
-        return str;
-      };
-
-      const rows = businesses.map((b) => [
-        escapeCell(b.name),
-        escapeCell(b.siret),
-        escapeCell(b.siren),
-        escapeCell(b.entityType),
-        escapeCell(b.apeCode),
-        escapeCell(b.legalForm),
-        escapeCell(b.employeesRange),
-        escapeCell(b.address),
-        escapeCell(b.postalCode),
-        escapeCell(b.city),
-        escapeCell(b.phone),
-        escapeCell(b.website),
-        b.isHeadquarters ? "Oui" : "Non",
-        escapeCell(b.analysis?.seoScore?.toString()),
-        escapeCell(b.analysis?.digitalScore?.toString()),
-        escapeCell(b.analysis?.priority),
-        escapeCell(b.analysis?.status),
-      ]);
-
-      const csv =
-        BOM + [headers.join(";"), ...rows.map((r) => r.join(";"))].join("\n");
+      // Build CSV (colonnes sélectionnables via ?columns=)
+      const csv = buildCsv(
+        businesses as unknown as CsvBusinessRow[],
+        parseColumnsParam((request.query as { columns?: string }).columns),
+      );
 
       const filename = `commercehunter-prospects-${list.name.replace(/[^a-zA-Z0-9]/g, "_")}.csv`;
 
@@ -369,6 +277,27 @@ export default async function exportRoutes(app: FastifyInstance) {
               },
               analyzedAt: a.analyzedAt?.toISOString() ?? null,
             }
+          : null,
+        // Recommandations IA si générées — sans le brouillon d'email
+        // (le PDF est destiné au prospect, l'email au prestataire)
+        aiRecommendations: a?.aiRecommendations
+          ? (() => {
+              const reco = a.aiRecommendations as {
+                summary: string;
+                priorityActions: {
+                  title: string;
+                  why: string;
+                  impact: string;
+                  effort: string;
+                }[];
+                quickWins: string[];
+              };
+              return {
+                summary: reco.summary,
+                priorityActions: reco.priorityActions,
+                quickWins: reco.quickWins,
+              };
+            })()
           : null,
         generatedAt: new Date().toLocaleDateString("fr-FR", {
           day: "2-digit",

@@ -33,5 +33,11 @@
     "eslint": "^9",
     "eslint-config-next": "^15",
     "tailwindcss": "^4"
-  }
+  },
+  "browserslist": [
+    "chrome >= 111",
+    "edge >= 111",
+    "firefox >= 121",
+    "safari >= 16.4"
+  ]
 }

@@ -5,6 +5,8 @@ import { SeoAnalyzerService } from "../services/seo-analyzer.service.js";
 import { PageSpeedService } from "../services/pagespeed.service.js";
 import { scoreAnalysis } from "../services/scoring.service.js";
 import { QuotaService } from "../services/quota.service.js";
+import { AiRecommendationsService, isAiEnabled } from "../services/ai-recommendations.service.js";
+import { destructiveRateLimit } from "../plugins/rate-limit.js";
 import { analyzeSingleBusiness } from "../workers/analysis.worker.js";
 
 export default async function businessRoutes(app: FastifyInstance) {
@@ -261,6 +263,14 @@ export default async function businessRoutes(app: FastifyInstance) {
                 hasProperHeadingHierarchy: a.hasProperHeadingHierarchy,
                 internalLinkCount: a.internalLinkCount,
                 externalLinkCount: a.externalLinkCount,
+                wordCount: a.wordCount,
+                textRatio: a.textRatio,
+                brokenLinksCount: a.brokenLinksCount,
+                checkedLinksCount: a.checkedLinksCount,
+              },
+              platform: {
+                detectedPlatform: a.detectedPlatform,
+                isFreeHosting: a.isFreeHosting,
               },
               security: {
                 hasHsts: a.hasHsts,
@@ -271,7 +281,9 @@ export default async function businessRoutes(app: FastifyInstance) {
               social: {
                 hasOgTags: a.hasOgTags,
                 hasTwitterCard: a.hasTwitterCard,
+                hasOgImage: a.hasOgImage,
                 structuredDataTypes: a.structuredDataTypes,
+                jsonLdInvalidCount: a.jsonLdInvalidCount,
               },
               scores: {
                 seoScore: a.seoScore,
@@ -280,9 +292,169 @@ export default async function businessRoutes(app: FastifyInstance) {
               },
               contactEmails: a.contactEmails,
               analyzedAt: a.analyzedAt,
+              aiRecommendations: a.aiRecommendations,
+              aiRecommendationsAt: a.aiRecommendationsAt,
             }
           : null,
+        aiEnabled: isAiEnabled(),
       };
+    },
+  );
+
+  // ─── POST /api/v1/businesses/:id/ai-recommendations ────
+  // Génération à la demande, stockée sur Analysis (une fois, réutilisée
+  // par l'UI et le PDF). body.force = true pour régénérer.
+  app.post<{ Params: { id: string }; Body: { force?: boolean } }>(
+    "/api/v1/businesses/:id/ai-recommendations",
+    { preHandler: app.authenticate, config: { rateLimit: destructiveRateLimit } },
+    async (request, reply) => {
+      const paramsParsed = UuidParamSchema.safeParse(request.params);
+      if (!paramsParsed.success) {
+        return reply.status(400).send({ error: "Invalid business ID" });
+      }
+      const { id } = paramsParsed.data;
+
+      if (!isAiEnabled()) {
+        return reply.status(503).send({
+          error:
+            "Recommandations IA non disponibles : ANTHROPIC_API_KEY n'est pas configurée sur cette instance.",
+        });
+      }
+
+      const business = await app.prisma.business.findUnique({
+        where: { id },
+        include: {
+          analysis: true,
+          scanBusinesses: {
+            include: { scan: { select: { organizationId: true } } },
+          },
+        },
+      });
+
+      const orgMatch = business?.scanBusinesses.some(
+        (sb) => sb.scan.organizationId === request.user.organizationId,
+      );
+      if (!business || !orgMatch) {
+        return reply.status(404).send({ error: "Business not found" });
+      }
+
+      const analysis = business.analysis;
+      if (
+        !analysis ||
+        (analysis.status !== "COMPLETED" && analysis.status !== "NO_WEBSITE")
+      ) {
+        return reply.status(409).send({
+          error:
+            "L'analyse doit être terminée avant de générer les recommandations.",
+        });
+      }
+
+      // Déjà générées et pas de force → renvoyer le cache
+      if (analysis.aiRecommendations && !request.body?.force) {
+        return reply.send({
+          recommendations: analysis.aiRecommendations,
+          generatedAt: analysis.aiRecommendationsAt,
+          cached: true,
+        });
+      }
+
+      // Contexte d'analyse compact et explicite (tokens bornés)
+      const analysisData = {
+        status: analysis.status,
+        scores: {
+          digitalScore: analysis.digitalScore,
+          seoScore: analysis.seoScore,
+          priority: analysis.priority,
+          performanceScore: analysis.performanceScore,
+        },
+        technique: {
+          isHttps: analysis.isHttps,
+          httpStatusCode: analysis.httpStatusCode,
+          responseTimeMs: analysis.responseTimeMs,
+          hasRobotsTxt: analysis.hasRobotsTxt,
+          hasSitemapXml: analysis.hasSitemapXml,
+        },
+        seoOnPage: {
+          title: analysis.title,
+          metaDescription: analysis.metaDescription,
+          h1: analysis.h1,
+          hasCanonical: analysis.hasCanonical,
+          hasFavicon: analysis.hasFavicon,
+        },
+        mobile: { hasViewport: analysis.hasViewport },
+        seoLocal: {
+          cityInTitle: analysis.cityInTitle,
+          cityInH1: analysis.cityInH1,
+          cityInDescription: analysis.cityInDescription,
+          hasSchemaLocalBusiness: analysis.hasSchemaLocalBusiness,
+          hasGoogleMapsEmbed: analysis.hasGoogleMapsEmbed,
+        },
+        contenu: {
+          totalImages: analysis.totalImages,
+          imagesWithAlt: analysis.imagesWithAlt,
+          h1Count: analysis.h1Count,
+          hasProperHeadingHierarchy: analysis.hasProperHeadingHierarchy,
+          internalLinkCount: analysis.internalLinkCount,
+          externalLinkCount: analysis.externalLinkCount,
+          nombreDeMots: analysis.wordCount,
+          liensCasses:
+            analysis.brokenLinksCount != null
+              ? `${analysis.brokenLinksCount} sur ${analysis.checkedLinksCount} testés`
+              : null,
+        },
+        plateforme: {
+          cmsDetecte: analysis.detectedPlatform,
+          hebergementGratuitOuPagePlateforme: analysis.isFreeHosting,
+        },
+        securite: {
+          hasHsts: analysis.hasHsts,
+          hasCsp: analysis.hasCsp,
+        },
+        social: {
+          hasOgTags: analysis.hasOgTags,
+          hasTwitterCard: analysis.hasTwitterCard,
+          imageDePartageOgImage: analysis.hasOgImage,
+          structuredDataTypes: analysis.structuredDataTypes,
+          blocsJsonLdInvalides: analysis.jsonLdInvalidCount,
+        },
+        performance: {
+          lcpMs: analysis.lcpMs,
+          ttfbMs: analysis.ttfbMs,
+        },
+        emailsTrouves: analysis.contactEmails,
+      };
+
+      try {
+        const service = new AiRecommendationsService();
+        const recommendations = await service.generate(
+          {
+            name: business.name,
+            apeCode: business.apeCode,
+            city: business.city,
+            postalCode: business.postalCode,
+            website: business.website,
+            phone: business.phone,
+          },
+          analysisData,
+        );
+
+        const generatedAt = new Date();
+        await app.prisma.analysis.update({
+          where: { id: analysis.id },
+          data: {
+            aiRecommendations: recommendations,
+            aiRecommendationsAt: generatedAt,
+          },
+        });
+
+        return reply.send({ recommendations, generatedAt, cached: false });
+      } catch (err) {
+        request.log.error({ err, businessId: id }, "AI recommendations failed");
+        return reply.status(502).send({
+          error:
+            "La génération des recommandations a échoué — réessayez dans un instant.",
+        });
+      }
     },
   );
 

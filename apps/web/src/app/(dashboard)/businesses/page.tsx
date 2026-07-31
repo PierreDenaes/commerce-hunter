@@ -7,6 +7,7 @@ import { showApiError, showSuccess } from "@/lib/toast";
 import { BusinessTable, type BusinessRow } from "@/components/businesses/business-table";
 import { FilterPanel, type FilterValues } from "@/components/businesses/filter-panel";
 import { SelectionActionBar } from "@/components/businesses/selection-action-bar";
+import { ExportCsvDialog, EXPORT_COLUMNS } from "@/components/businesses/export-csv-dialog";
 import { AddToListDialog } from "@/components/prospects/add-to-list-dialog";
 import { GradientButton } from "@/components/ui/gradient-button";
 import { SkeletonLoader } from "@/components/ui/skeleton-loader";
@@ -57,6 +58,7 @@ function BusinessesPageInner() {
   const [addToListOpen, setAddToListOpen] = useState(false);
   const [scans, setScans] = useState<ScanOption[]>([]);
   const [reanalyzing, setReanalyzing] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
 
   const scanId = searchParams.get("scanId") ?? "";
   const page = Number(searchParams.get("page") ?? "1");
@@ -166,11 +168,14 @@ function BusinessesPageInner() {
       .finally(() => setLoading(false));
   }, [scanId, page, limit, filters.entityType, filters.priority, filters.hasWebsite, filters.city, filters.employeesRangeCodes, filters.isHeadquarters, filters.analysisStatus, filters.minScore, filters.maxScore, filters.search, filters.sortBy, filters.sortOrder]);
 
-  const handleExportCsv = () => {
+  const handleExportCsv = (columns: string[]) => {
     if (!scanId) return;
     const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
     const params = new URLSearchParams();
     params.set("scanId", scanId);
+    if (columns.length < EXPORT_COLUMNS.length) {
+      params.set("columns", columns.join(","));
+    }
     if (filters.entityType) params.set("entityType", filters.entityType);
     if (filters.priority) params.set("priority", filters.priority);
     if (filters.hasWebsite) params.set("hasWebsite", filters.hasWebsite);
@@ -185,6 +190,7 @@ function BusinessesPageInner() {
     params.set("sortOrder", filters.sortOrder);
 
     window.open(`${apiUrl}/api/v1/export/csv?${params.toString()}`, "_blank");
+    setExportOpen(false);
     showSuccess("Export CSV en cours");
   };
 
@@ -231,9 +237,14 @@ function BusinessesPageInner() {
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>
-              <GradientButton variant="accent" size="sm" onClick={handleExportCsv}>
+              <GradientButton variant="accent" size="sm" onClick={() => setExportOpen(true)}>
                 Export CSV
               </GradientButton>
+              <ExportCsvDialog
+                open={exportOpen}
+                onOpenChange={setExportOpen}
+                onExport={handleExportCsv}
+              />
             </>
           )}
         </div>

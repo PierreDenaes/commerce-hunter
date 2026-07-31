@@ -38,6 +38,14 @@ function makeAnalysis(overrides: Partial<Analysis> = {}): Analysis {
     digitalScore: null,
     priority: null,
     rawAnalysisJson: null,
+    wordCount: null,
+    textRatio: null,
+    hasOgImage: null,
+    jsonLdInvalidCount: null,
+    detectedPlatform: null,
+    isFreeHosting: null,
+    brokenLinksCount: null,
+    checkedLinksCount: null,
     errorMessage: null,
     analyzedAt: new Date(),
     createdAt: new Date(),
@@ -162,6 +170,62 @@ describe("calculateSeoScore", () => {
     // HTTPS (10) + status 200 (10) + response NOT counted (0) = 20
     // + pageWeight default (5) = 25
     expect(calculateSeoScore(analysis)).toBe(25);
+  });
+});
+
+describe("calculateSeoScore — malus qualité", () => {
+  it("pénalise un title hors plage optimale (30-60)", () => {
+    const base = makeAnalysis({ title: "Accueil", titleLength: 8 });
+    const optimal = makeAnalysis({
+      title: "Boulangerie du Port — pain artisanal à La Ciotat",
+      titleLength: 48,
+    });
+    expect(calculateSeoScore(base)).toBe(calculateSeoScore(optimal) - 3);
+  });
+
+  it("pénalise un contenu trop pauvre (< 100 mots)", () => {
+    const thin = makeAnalysis({ wordCount: 40 });
+    const rich = makeAnalysis({ wordCount: 400 });
+    expect(calculateSeoScore(thin)).toBe(Math.max(0, calculateSeoScore(rich) - 10));
+  });
+
+  it("pénalise les liens cassés avec plafond", () => {
+    const twoBroken = makeAnalysis({ isHttps: true, httpStatusCode: 200, brokenLinksCount: 2 });
+    const manyBroken = makeAnalysis({ isHttps: true, httpStatusCode: 200, brokenLinksCount: 8 });
+    const clean = makeAnalysis({ isHttps: true, httpStatusCode: 200, brokenLinksCount: 0 });
+    expect(calculateSeoScore(twoBroken)).toBe(calculateSeoScore(clean) - 6);
+    expect(calculateSeoScore(manyBroken)).toBe(calculateSeoScore(clean) - 10); // plafonné
+  });
+
+  it("pénalise le JSON-LD invalide", () => {
+    const invalid = makeAnalysis({ isHttps: true, jsonLdInvalidCount: 2 });
+    const valid = makeAnalysis({ isHttps: true, jsonLdInvalidCount: 0 });
+    expect(calculateSeoScore(invalid)).toBe(calculateSeoScore(valid) - 3);
+  });
+
+  it("les analyses antérieures (champs null) ne sont pas pénalisées", () => {
+    const legacy = makeAnalysis({ isHttps: true, httpStatusCode: 200 });
+    const modern = makeAnalysis({
+      isHttps: true,
+      httpStatusCode: 200,
+      wordCount: 500,
+      brokenLinksCount: 0,
+      jsonLdInvalidCount: 0,
+    });
+    expect(calculateSeoScore(legacy)).toBe(calculateSeoScore(modern));
+  });
+});
+
+describe("calculateDigitalScore — hébergement gratuit", () => {
+  it("dégrade la composante présence sur un hébergement gratuit", () => {
+    const business = makeBusiness({ website: "https://monsite.wixsite.com/boulangerie" });
+    const free = makeAnalysis({ seoScore: 50, isFreeHosting: true });
+    const owned = makeAnalysis({ seoScore: 50, isFreeHosting: false });
+    // 30 points de présence en moins × pondération 25 % = -7.5 → arrondi
+    const diff =
+      calculateDigitalScore(owned, business) - calculateDigitalScore(free, business);
+    expect(diff).toBeGreaterThanOrEqual(7);
+    expect(diff).toBeLessThanOrEqual(8);
   });
 });
 

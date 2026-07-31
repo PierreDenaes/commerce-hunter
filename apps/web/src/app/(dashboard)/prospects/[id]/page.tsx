@@ -6,6 +6,7 @@ import { Trash2, Download, Pencil, ArrowLeft, ListChecks } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { showApiError, showSuccess } from "@/lib/toast";
 import { BusinessTable, type BusinessRow } from "@/components/businesses/business-table";
+import { ExportCsvDialog, EXPORT_COLUMNS } from "@/components/businesses/export-csv-dialog";
 import { GradientButton } from "@/components/ui/gradient-button";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -45,6 +46,7 @@ export default function ProspectListDetailPage() {
 
   const [list, setList] = useState<ProspectListDetail | null>(null);
   const [businesses, setBusinesses] = useState<BusinessRow[]>([]);
+  const [exportOpen, setExportOpen] = useState(false);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -144,12 +146,18 @@ export default function ProspectListDetailPage() {
     }
   };
 
-  const handleExportCsv = () => {
+  const handleExportCsv = (columns: string[]) => {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+    const params = new URLSearchParams();
+    if (columns.length < EXPORT_COLUMNS.length) {
+      params.set("columns", columns.join(","));
+    }
+    const query = params.toString();
     window.open(
-      `${apiUrl}/api/v1/export/prospect-list-csv/${listId}`,
+      `${apiUrl}/api/v1/export/prospect-list-csv/${listId}${query ? `?${query}` : ""}`,
       "_blank",
     );
+    setExportOpen(false);
     showSuccess("Export CSV en cours");
   };
 
@@ -204,11 +212,16 @@ export default function ProspectListDetailPage() {
             <GradientButton
               variant="accent"
               size="sm"
-              onClick={handleExportCsv}
+              onClick={() => setExportOpen(true)}
             >
               <Download className="size-4" />
               Export CSV
             </GradientButton>
+            <ExportCsvDialog
+              open={exportOpen}
+              onOpenChange={setExportOpen}
+              onExport={handleExportCsv}
+            />
             <Button
               variant="outline"
               size="sm"

@@ -1,5 +1,6 @@
 import {
   SEO_SCORE_POINTS,
+  SEO_SCORE_PENALTIES,
   SCORING_WEIGHTS,
   PRIORITY_THRESHOLDS,
 } from "@commercehunter/shared";
@@ -75,6 +76,34 @@ export function calculateSeoScore(analysis: Analysis): number {
   if (analysis.hasGoogleMapsEmbed)
     score += SEO_SCORE_POINTS.hasGoogleMapsEmbed;
 
+  // Malus qualité (champs null = analyse antérieure, pas de pénalité)
+  if (
+    analysis.title &&
+    analysis.titleLength != null &&
+    (analysis.titleLength < 30 || analysis.titleLength > 60)
+  ) {
+    score -= SEO_SCORE_PENALTIES.titleLengthSuboptimal;
+  }
+  if (
+    analysis.metaDescription &&
+    analysis.metaDescriptionLength != null &&
+    (analysis.metaDescriptionLength < 50 || analysis.metaDescriptionLength > 160)
+  ) {
+    score -= SEO_SCORE_PENALTIES.descriptionLengthSuboptimal;
+  }
+  if (analysis.wordCount != null && analysis.wordCount < 100) {
+    score -= SEO_SCORE_PENALTIES.thinContent;
+  }
+  if (analysis.jsonLdInvalidCount != null && analysis.jsonLdInvalidCount > 0) {
+    score -= SEO_SCORE_PENALTIES.invalidJsonLd;
+  }
+  if (analysis.brokenLinksCount != null && analysis.brokenLinksCount > 0) {
+    score -= Math.min(
+      SEO_SCORE_PENALTIES.maxBrokenLinksPenalty,
+      analysis.brokenLinksCount * SEO_SCORE_PENALTIES.perBrokenLink,
+    );
+  }
+
   return Math.min(100, Math.max(0, score));
 }
 
@@ -89,9 +118,14 @@ export function calculateDigitalScore(
   // SEO component (40%)
   const seoComponent = seoScore * SCORING_WEIGHTS.seo;
 
-  // Presence component (25%): has website = 100, no website = 0
+  // Presence component (25%): has website = 100, no website = 0.
+  // Un « site » sur sous-domaine gratuit / page de plateforme (Wix gratuit,
+  // Facebook…) compte comme une présence dégradée.
   const hasWebsite = business.website !== null && business.website !== "";
-  const presenceScore = hasWebsite ? 100 : 0;
+  let presenceScore = hasWebsite ? 100 : 0;
+  if (hasWebsite && analysis.isFreeHosting === true) {
+    presenceScore -= SEO_SCORE_PENALTIES.freeHostingPresencePenalty;
+  }
   const presenceComponent = presenceScore * SCORING_WEIGHTS.presence;
 
   // Mobile component (15%): use performanceScore if available, fallback to mobileScore/viewport

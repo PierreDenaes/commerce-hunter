@@ -63,6 +63,19 @@ export interface AuditReportData {
     };
     analyzedAt: string | null;
   } | null;
+  // Recommandations IA (optionnelles) — remplacent les recommandations
+  // génériques quand présentes. Le brouillon d'email n'est volontairement
+  // PAS inclus : le PDF est destiné au prospect, pas au prestataire.
+  aiRecommendations?: {
+    summary: string;
+    priorityActions: {
+      title: string;
+      why: string;
+      impact: string;
+      effort: string;
+    }[];
+    quickWins: string[];
+  } | null;
   generatedAt: string;
 }
 
@@ -184,6 +197,33 @@ const s = StyleSheet.create({
     color: C.amber,
     marginRight: 6,
     fontFamily: "Helvetica-Bold",
+  },
+  aiSummary: {
+    marginBottom: 10,
+    lineHeight: 1.5,
+  },
+  aiAction: {
+    marginBottom: 8,
+  },
+  aiActionTitle: {
+    fontFamily: "Helvetica-Bold",
+    marginBottom: 2,
+  },
+  aiActionMeta: {
+    fontFamily: "Helvetica",
+    fontSize: 8,
+    color: C.muted,
+  },
+  aiActionWhy: {
+    color: C.muted,
+    fontSize: 9,
+    lineHeight: 1.4,
+  },
+  aiQuickWinsTitle: {
+    fontFamily: "Helvetica-Bold",
+    color: C.cyan,
+    marginTop: 6,
+    marginBottom: 4,
   },
 });
 
@@ -364,17 +404,46 @@ export function AuditReport({ data }: { data: AuditReportData }) {
           </>
         )}
 
-        {/* Recommendations */}
-        {recs.length > 0 && (
+        {/* Recommandations personnalisées (IA) ou génériques (règles) */}
+        {data.aiRecommendations ? (
           <View style={s.section}>
-            <Text style={s.sectionTitle}>Recommandations</Text>
-            {recs.map((rec, i) => (
-              <View key={i} style={s.recoItem}>
-                <Text style={s.recoBullet}>•</Text>
-                <Text>{rec}</Text>
+            <Text style={s.sectionTitle}>Analyse et recommandations</Text>
+            <Text style={s.aiSummary}>{data.aiRecommendations.summary}</Text>
+            {data.aiRecommendations.priorityActions.map((action, i) => (
+              <View key={i} style={s.aiAction}>
+                <Text style={s.aiActionTitle}>
+                  {i + 1}. {action.title}{"  "}
+                  <Text style={s.aiActionMeta}>
+                    (impact {action.impact.toLowerCase()} · effort {action.effort.toLowerCase()})
+                  </Text>
+                </Text>
+                <Text style={s.aiActionWhy}>{action.why}</Text>
               </View>
             ))}
+            {data.aiRecommendations.quickWins.length > 0 && (
+              <>
+                <Text style={s.aiQuickWinsTitle}>Améliorations rapides</Text>
+                {data.aiRecommendations.quickWins.map((win, i) => (
+                  <View key={i} style={s.recoItem}>
+                    <Text style={s.recoBullet}>•</Text>
+                    <Text>{win}</Text>
+                  </View>
+                ))}
+              </>
+            )}
           </View>
+        ) : (
+          recs.length > 0 && (
+            <View style={s.section}>
+              <Text style={s.sectionTitle}>Recommandations</Text>
+              {recs.map((rec, i) => (
+                <View key={i} style={s.recoItem}>
+                  <Text style={s.recoBullet}>•</Text>
+                  <Text>{rec}</Text>
+                </View>
+              ))}
+            </View>
+          )
         )}
 
         {/* Footer */}
