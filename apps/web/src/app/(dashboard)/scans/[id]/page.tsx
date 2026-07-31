@@ -41,6 +41,7 @@ interface ScanDetail {
     highPriorityCount: number;
     foundBusinesses: number;
     analyzedCount: number;
+    websitesAnalyzedCount: number;
   };
 }
 
@@ -206,18 +207,29 @@ export default function ScanDetailPage() {
           <GlassCard className="mb-6">
             <div className="mb-2 flex items-center justify-between text-sm">
               <span className="text-muted-foreground">
-                Analyses en cours...
+                Analyse des sites web...
               </span>
               <span className="font-medium">
-                {scan.stats.analyzedCount.toLocaleString("fr-FR")} /{" "}
-                {scan.stats.foundBusinesses.toLocaleString("fr-FR")}
+                {scan.stats.websitesAnalyzedCount.toLocaleString("fr-FR")} /{" "}
+                {scan.stats.withWebsite.toLocaleString("fr-FR")} sites
               </span>
             </div>
             <GradientProgressBar
-              value={Math.round(
-                (scan.stats.analyzedCount / scan.stats.foundBusinesses) * 100,
-              )}
+              value={
+                scan.stats.withWebsite > 0
+                  ? Math.round(
+                      (scan.stats.websitesAnalyzedCount /
+                        scan.stats.withWebsite) *
+                        100,
+                    )
+                  : 100
+              }
             />
+            <p className="mt-2 text-xs text-muted-foreground">
+              {scan.stats.withoutWebsite.toLocaleString("fr-FR")} entreprises
+              sans site web sont classées directement en priorité haute, sans
+              analyse.
+            </p>
           </GlassCard>
         )}
 

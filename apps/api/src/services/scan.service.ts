@@ -141,6 +141,7 @@ export class ScanService {
         high_priority_count: bigint;
         found_count: bigint;
         analyzed_count: bigint;
+        websites_analyzed_count: bigint;
       }>
     >(
       `SELECT
@@ -151,7 +152,8 @@ export class ScanService {
         ROUND(AVG(a.digital_score)::numeric, 1) AS avg_digital_score,
         COUNT(DISTINCT b.id) FILTER (WHERE a.priority = 'HIGH') AS high_priority_count,
         COUNT(DISTINCT b.id) AS found_count,
-        COUNT(DISTINCT b.id) FILTER (WHERE a.status IN ('COMPLETED', 'FAILED', 'NO_WEBSITE')) AS analyzed_count
+        COUNT(DISTINCT b.id) FILTER (WHERE a.status IN ('COMPLETED', 'FAILED', 'NO_WEBSITE')) AS analyzed_count,
+        COUNT(DISTINCT b.id) FILTER (WHERE b.website IS NOT NULL AND b.website != '' AND a.status IN ('COMPLETED', 'FAILED')) AS websites_analyzed_count
       FROM scan_businesses sb
       JOIN businesses b ON b.id = sb.business_id
       LEFT JOIN analyses a ON a.business_id = b.id
@@ -171,6 +173,7 @@ export class ScanService {
           highPriorityCount: Number(stats.high_priority_count),
           foundBusinesses: Number(stats.found_count),
           analyzedCount: Number(stats.analyzed_count),
+          websitesAnalyzedCount: Number(stats.websites_analyzed_count),
         },
       },
       status: 200,

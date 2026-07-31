@@ -64,26 +64,55 @@ export async function processAnalyses(
   });
   if (!scan) return;
 
+  // Split into: businesses with website vs without — seules les entreprises
+  // AVEC site déclenchent une vraie analyse (fetch, PageSpeed…) et comptent
+  // dans le quota. Les sans-site sont classées instantanément (NO_WEBSITE,
+  // priorité HIGH) sans rien consommer.
+  const businesses = await prisma.business.findMany({
+    where: { id: { in: businessIds } },
+    select: {
+      id: true,
+      website: true,
+      city: true,
+      phone: true,
+      legalFormCode: true,
+      employeesRangeCode: true,
+    },
+  });
+
+  const allWithWebsite = businesses.filter((b) => b.website);
+  const withoutWebsite = businesses.filter((b) => !b.website);
+
   // Réservation atomique en amont : deux scans concurrents ne peuvent pas
   // consommer le même solde. Les échecs sont rendus au quota en fin de run.
   const quotaService = new QuotaService(prisma);
-  const granted = await quotaService.reserveAnalyses(
-    scan.organizationId,
-    businessIds.length,
-  );
-
-  if (granted === 0) {
-    log.warn(
-      { scanId, organizationId: scan.organizationId },
-      "Analysis quota exhausted, skipping analysis processing",
+  let withWebsite = allWithWebsite;
+  if (allWithWebsite.length > 0) {
+    const granted = await quotaService.reserveAnalyses(
+      scan.organizationId,
+      allWithWebsite.length,
     );
-    return;
+    if (granted === 0) {
+      log.warn(
+        { scanId, organizationId: scan.organizationId },
+        "Analysis quota exhausted, skipping website analyses",
+      );
+    }
+    withWebsite = allWithWebsite.slice(0, granted);
   }
 
-  const cappedBusinessIds = businessIds.slice(0, granted);
+  const cappedBusinessIds = [
+    ...withWebsite.map((b) => b.id),
+    ...withoutWebsite.map((b) => b.id),
+  ];
 
   log.info(
-    { scanId, total: businessIds.length, processing: cappedBusinessIds.length },
+    {
+      scanId,
+      total: businessIds.length,
+      withWebsite: withWebsite.length,
+      withoutWebsite: withoutWebsite.length,
+    },
     "Starting analysis processing",
   );
 
@@ -95,22 +124,6 @@ export async function processAnalyses(
       update: {},
     });
   }
-
-  // Split into: businesses with website vs without
-  const businesses = await prisma.business.findMany({
-    where: { id: { in: cappedBusinessIds } },
-    select: {
-      id: true,
-      website: true,
-      city: true,
-      phone: true,
-      legalFormCode: true,
-      employeesRangeCode: true,
-    },
-  });
-
-  const withWebsite = businesses.filter((b) => b.website);
-  const withoutWebsite = businesses.filter((b) => !b.website);
 
   // ─── Handle businesses WITHOUT website ────────────────
   for (const biz of withoutWebsite) {
@@ -163,8 +176,12 @@ export async function processAnalyses(
   }
 
   // ─── Rendre au quota les analyses en échec ────────────
+  // Seules les entreprises avec site ont réservé du quota.
   const failedCount = await prisma.analysis.count({
-    where: { businessId: { in: cappedBusinessIds }, status: "FAILED" },
+    where: {
+      businessId: { in: withWebsite.map((b) => b.id) },
+      status: "FAILED",
+    },
   });
   if (failedCount > 0) {
     await quotaService.releaseAnalyses(scan.organizationId, failedCount);
