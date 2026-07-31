@@ -9,7 +9,9 @@ export interface PageSpeedResult {
 }
 
 const PAGESPEED_API = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed";
-const TIMEOUT_MS = 30_000;
+// Un audit Lighthouse de site lent prend couramment 40 à 90 s côté Google —
+// 30 s faisait échouer la majorité des analyses de vrais sites en timeout.
+const TIMEOUT_MS = 90_000;
 const MAX_RETRIES = 1;
 
 export class PageSpeedService {
