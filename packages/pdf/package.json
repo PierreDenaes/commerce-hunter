@@ -1,0 +1,27 @@
+{
+  "name": "@commercehunter/pdf",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@react-pdf/renderer": "^4",
+    "react": "^19"
+  },
+  "devDependencies": {
+    "@commercehunter/tsconfig": "workspace:*",
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "typescript": "^5.7"
+  }
+}

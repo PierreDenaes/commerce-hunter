@@ -1,0 +1,19 @@
+{
+  "name": "@commercehunter/eslint-config",
+  "version": "0.0.0",
+  "private": true,
+  "files": ["index.mjs"],
+  "exports": {
+    ".": "./index.mjs"
+  },
+  "dependencies": {
+    "@typescript-eslint/eslint-plugin": "^8",
+    "@typescript-eslint/parser": "^8",
+    "eslint-config-prettier": "^10",
+    "eslint-plugin-import": "^2"
+  },
+  "peerDependencies": {
+    "eslint": "^9",
+    "typescript": "^5"
+  }
+}

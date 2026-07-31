@@ -1,0 +1,342 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────
+
+enum EntityType {
+  COMMERCE
+  PME
+}
+
+enum ScanEntityType {
+  COMMERCE
+  PME
+  BOTH
+}
+
+enum ScanStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum AnalysisStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  NO_WEBSITE
+}
+
+enum Priority {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum UserRole {
+  ADMIN
+  USER
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+}
+
+// ─── Models ──────────────────────────────────────────────
+
+model Organization {
+  id                    String   @id @default(uuid()) @db.Uuid
+  name                  String   @db.VarChar(200)
+  planId                String   @map("plan_id") @db.Uuid
+  monthlyAnalysesUsed   Int      @default(0) @map("monthly_analyses_used")
+  billingPeriodStart    DateTime @map("billing_period_start")
+  stripeCustomerId      String?  @unique @map("stripe_customer_id") @db.VarChar(100)
+  stripeSubscriptionId  String?  @unique @map("stripe_subscription_id") @db.VarChar(100)
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  plan           SubscriptionPlan @relation(fields: [planId], references: [id])
+  users          User[]
+  scans          Scan[]
+  invitations    Invitation[]
+  prospectLists  ProspectList[]
+
+  @@map("organizations")
+}
+
+model User {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  email          String    @unique @db.VarChar(255)
+  passwordHash   String    @map("password_hash") @db.VarChar(255)
+  name           String    @db.VarChar(200)
+  role           UserRole  @default(USER)
+  lastLoginAt    DateTime? @map("last_login_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  organization         Organization @relation(fields: [organizationId], references: [id])
+  scansCreated         Scan[]
+  invitationsSent      Invitation[]
+  refreshTokens        RefreshToken[]
+  passwordResetTokens  PasswordResetToken[]
+  prospectListsCreated ProspectList[]
+
+  @@index([organizationId])
+  @@map("users")
+}
+
+model SubscriptionPlan {
+  id                   String   @id @default(uuid()) @db.Uuid
+  name                 String   @unique @db.VarChar(50)
+  priceCents           Int      @map("price_cents")
+  cityLimit            Int      @map("city_limit")
+  monthlyAnalysisLimit Int      @map("monthly_analysis_limit")
+  hasPdfExport         Boolean  @default(false) @map("has_pdf_export")
+  hasWhiteLabel        Boolean  @default(false) @map("has_white_label")
+  hasApiAccess         Boolean  @default(false) @map("has_api_access")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  organizations Organization[]
+
+  @@map("subscription_plans")
+}
+
+model Scan {
+  id              String     @id @default(uuid()) @db.Uuid
+  organizationId  String     @map("organization_id") @db.Uuid
+  createdById     String     @map("created_by_id") @db.Uuid
+  name            String     @db.VarChar(200)
+  postalCode      String     @map("postal_code") @db.VarChar(10)
+  radiusKm        Int?       @map("radius_km")
+  entityType      ScanEntityType @map("entity_type")
+  minEmployees    Int?       @map("min_employees")
+  apeCategories   String[]   @map("ape_categories")
+  status          ScanStatus @default(PENDING)
+  totalBusinesses Int        @default(0) @map("total_businesses")
+  errorMessage    String?    @map("error_message")
+  startedAt       DateTime?  @map("started_at")
+  completedAt     DateTime?  @map("completed_at")
+  createdAt       DateTime   @default(now()) @map("created_at")
+
+  organization   Organization   @relation(fields: [organizationId], references: [id])
+  createdBy      User           @relation(fields: [createdById], references: [id])
+  scanBusinesses ScanBusiness[]
+
+  @@index([organizationId, createdAt])
+  @@index([status])
+  @@map("scans")
+}
+
+model Business {
+  id                String     @id @default(uuid()) @db.Uuid
+  siret             String     @unique @db.VarChar(14)
+  siren             String     @db.VarChar(9)
+  name              String     @db.VarChar(300)
+  entityType        EntityType @map("entity_type")
+  apeCode           String     @map("ape_code") @db.VarChar(10)
+  legalForm         String?    @map("legal_form") @db.VarChar(100)
+  legalFormCode     String?    @map("legal_form_code") @db.VarChar(10)
+  employeesRange    String?    @map("employees_range") @db.VarChar(20)
+  employeesRangeCode String?   @map("employees_range_code") @db.VarChar(5)
+  address           String?    @db.VarChar(500)
+  city              String     @db.VarChar(200)
+  postalCode        String     @map("postal_code") @db.VarChar(10)
+  phone             String?    @db.VarChar(30)
+  website           String?    @db.VarChar(500)
+  latitude          Decimal?   @db.Decimal(10, 7)
+  longitude         Decimal?   @db.Decimal(10, 7)
+  googlePlaceId     String?    @map("google_place_id") @db.VarChar(300)
+  isHeadquarters    Boolean    @default(false) @map("is_headquarters")
+  sireneLastUpdated DateTime?  @map("sirene_last_updated")
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
+
+  scanBusinesses         ScanBusiness[]
+  analysis               Analysis?
+  prospectListBusinesses ProspectListBusiness[]
+
+  @@index([siren])
+  @@index([postalCode])
+  @@index([entityType])
+  @@index([apeCode])
+  @@map("businesses")
+}
+
+model ScanBusiness {
+  id         String   @id @default(uuid()) @db.Uuid
+  scanId     String   @map("scan_id") @db.Uuid
+  businessId String   @map("business_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  scan     Scan     @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  business Business @relation(fields: [businessId], references: [id])
+
+  @@unique([scanId, businessId])
+  @@index([businessId])
+  @@map("scan_businesses")
+}
+
+model Analysis {
+  id                     String         @id @default(uuid()) @db.Uuid
+  businessId             String         @unique @map("business_id") @db.Uuid
+  status                 AnalysisStatus
+  analyzedUrl            String?        @map("analyzed_url")
+  // Technical checks
+  isHttps                Boolean?       @map("is_https")
+  httpStatusCode         Int?           @map("http_status_code")
+  responseTimeMs         Int?           @map("response_time_ms")
+  hasRobotsTxt           Boolean?       @map("has_robots_txt")
+  hasSitemapXml          Boolean?       @map("has_sitemap_xml")
+  // SEO on-page checks
+  title                  String?
+  titleLength            Int?           @map("title_length")
+  metaDescription        String?        @map("meta_description")
+  metaDescriptionLength  Int?           @map("meta_description_length")
+  h1                     String?
+  hasCanonical           Boolean?       @map("has_canonical")
+  hasFavicon             Boolean?       @map("has_favicon")
+  // Mobile checks
+  hasViewport            Boolean?       @map("has_viewport")
+  mobileScore            Int?           @map("mobile_score")
+  // Local SEO checks
+  cityInTitle            Boolean?       @map("city_in_title")
+  cityInH1               Boolean?       @map("city_in_h1")
+  cityInDescription      Boolean?       @map("city_in_description")
+  hasSchemaLocalBusiness  Boolean?       @map("has_schema_local_business")
+  hasGoogleMapsEmbed     Boolean?       @map("has_google_maps_embed")
+  // Performance (PageSpeed)
+  performanceScore       Int?           @map("performance_score")
+  lcpMs                  Int?           @map("lcp_ms")
+  clsScore               Int?           @map("cls_score")
+  ttfbMs                 Int?           @map("ttfb_ms")
+  fcpMs                  Int?           @map("fcp_ms")
+  // Images
+  totalImages            Int?           @map("total_images")
+  imagesWithAlt          Int?           @map("images_with_alt")
+  // Security headers
+  hasHsts                Boolean?       @map("has_hsts")
+  hasCsp                 Boolean?       @map("has_csp")
+  hasXFrameOptions       Boolean?       @map("has_x_frame_options")
+  hasXContentTypeOptions Boolean?       @map("has_x_content_type_options")
+  // Headings
+  h1Count                Int?           @map("h1_count")
+  h2Count                Int?           @map("h2_count")
+  h3Count                Int?           @map("h3_count")
+  hasProperHeadingHierarchy Boolean?    @map("has_proper_heading_hierarchy")
+  // Links
+  internalLinkCount      Int?           @map("internal_link_count")
+  externalLinkCount      Int?           @map("external_link_count")
+  // Social / OG
+  hasOgTags              Boolean?       @map("has_og_tags")
+  hasTwitterCard         Boolean?       @map("has_twitter_card")
+  structuredDataTypes    String[]       @default([]) @map("structured_data_types")
+  // Contact
+  contactEmails          String[]       @default([]) @map("contact_emails")
+  // Scores
+  seoScore               Int?           @map("seo_score")
+  digitalScore           Int?           @map("digital_score")
+  priority               Priority?
+  // Metadata
+  rawAnalysisJson        Json?          @map("raw_analysis_json")
+  errorMessage           String?        @map("error_message")
+  analyzedAt             DateTime?      @map("analyzed_at")
+  createdAt              DateTime       @default(now()) @map("created_at")
+  updatedAt              DateTime       @updatedAt @map("updated_at")
+
+  business Business @relation(fields: [businessId], references: [id])
+
+  @@index([status])
+  @@index([digitalScore])
+  @@index([priority])
+  @@map("analyses")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  jti       String   @unique @db.VarChar(64)
+  userId    String   @map("user_id") @db.Uuid
+  expiresAt DateTime @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model Invitation {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  invitedById    String           @map("invited_by_id") @db.Uuid
+  email          String           @db.VarChar(255)
+  token          String           @unique @db.VarChar(255)
+  status         InvitationStatus @default(PENDING)
+  expiresAt      DateTime         @map("expires_at")
+  createdAt      DateTime         @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  invitedBy    User         @relation(fields: [invitedById], references: [id])
+
+  @@index([organizationId, email])
+  @@index([status])
+  @@map("invitations")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  token     String    @unique @db.VarChar(64)
+  userId    String    @map("user_id") @db.Uuid
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
+}
+
+model ProspectList {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  createdById    String   @map("created_by_id") @db.Uuid
+  name           String   @db.VarChar(200)
+  description    String?  @db.VarChar(500)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  createdBy    User         @relation(fields: [createdById], references: [id])
+  businesses   ProspectListBusiness[]
+
+  @@index([organizationId])
+  @@map("prospect_lists")
+}
+
+model ProspectListBusiness {
+  id             String   @id @default(uuid()) @db.Uuid
+  prospectListId String   @map("prospect_list_id") @db.Uuid
+  businessId     String   @map("business_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  prospectList ProspectList @relation(fields: [prospectListId], references: [id], onDelete: Cascade)
+  business     Business     @relation(fields: [businessId], references: [id])
+
+  @@unique([prospectListId, businessId])
+  @@index([businessId])
+  @@map("prospect_list_businesses")
+}

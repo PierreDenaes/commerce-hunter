@@ -1,0 +1,36 @@
+{
+  "name": "@commercehunter/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "prisma generate && tsc",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:seed": "prisma db seed"
+  },
+  "dependencies": {
+    "@commercehunter/shared": "workspace:*",
+    "@prisma/client": "^6"
+  },
+  "devDependencies": {
+    "@commercehunter/tsconfig": "workspace:*",
+    "@types/bcrypt": "^5",
+    "@types/node": "^22",
+    "bcrypt": "^5",
+    "prisma": "^6",
+    "tsx": "^4",
+    "typescript": "^5.7"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  }
+}

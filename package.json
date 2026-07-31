@@ -1,0 +1,22 @@
+{
+  "name": "commercehunter",
+  "private": true,
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "test": "turbo test",
+    "db:migrate": "pnpm --filter @commercehunter/db exec prisma migrate dev",
+    "db:generate": "pnpm --filter @commercehunter/db exec prisma generate",
+    "db:seed": "pnpm --filter @commercehunter/db exec prisma db seed"
+  },
+  "devDependencies": {
+    "turbo": "^2",
+    "typescript": "^5.7",
+    "prettier": "^3"
+  },
+  "packageManager": "pnpm@9.15.4",
+  "engines": {
+    "node": ">=20"
+  }
+}

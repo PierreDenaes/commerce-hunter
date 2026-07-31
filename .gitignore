@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+.next/
+.turbo/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Testing
+coverage/
+
+# Prisma
+packages/db/prisma/migrations/**/migration_lock.toml
+
+# Docker volumes
+pgdata/
+
+# Documents locaux (audits prospects, notes) — données sensibles, jamais versionnés
+docs/
+
+# Caches locaux
+node-compile-cache/
+*.tsbuildinfo

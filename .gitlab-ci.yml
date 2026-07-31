@@ -1,0 +1,82 @@
+image: node:20-alpine
+
+stages:
+  - check
+  - build
+  - deploy
+
+.pnpm-setup: &pnpm-setup
+  before_script:
+    - corepack enable
+    - export PATH="/root/.local/share/pnpm:$PATH"
+    - pnpm install --frozen-lockfile
+    - pnpm --filter @commercehunter/db exec prisma generate
+    - find . -name "*.tsbuildinfo" -delete
+  cache:
+    key: pnpm-${CI_COMMIT_REF_SLUG}
+    paths:
+      - node_modules/
+      - apps/*/node_modules/
+      - packages/*/node_modules/
+
+# ── Typecheck ──────────────────────────────────────────────
+typecheck:
+  <<: *pnpm-setup
+  stage: check
+  script:
+    - pnpm --filter @commercehunter/shared build
+    - pnpm --filter @commercehunter/db build
+    - pnpm --filter @commercehunter/pdf build
+    - pnpm --filter @commercehunter/pdf exec sh -c "ls dist/ && echo 'PDF dist OK' || echo 'PDF dist MISSING'"
+    - pnpm --filter @commercehunter/pdf exec tsc --showConfig | head -30
+    - pnpm --filter @commercehunter/api exec tsc --noEmit
+    - pnpm --filter @commercehunter/web exec next lint
+
+# ── Test ───────────────────────────────────────────────────
+test:
+  <<: *pnpm-setup
+  stage: check
+  script:
+    - pnpm --filter @commercehunter/shared build
+    - pnpm --filter @commercehunter/db build
+    - pnpm test
+
+# ── Build ──────────────────────────────────────────────────
+build:
+  <<: *pnpm-setup
+  stage: build
+  needs: [typecheck, test]
+  script:
+    - pnpm build
+  artifacts:
+    paths:
+      - apps/api/dist/
+      - apps/web/.next/
+    expire_in: 1 day
+
+# ── Deploy ─────────────────────────────────────────────────
+deploy:
+  stage: deploy
+  needs: [build]
+  only:
+    - main
+  when: manual
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache openssh-client
+    - eval $(ssh-agent -s)
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - echo "$SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+  script:
+    - |
+      ssh root@${DEPLOY_HOST} "
+        cd /var/www/commercehunter &&
+        git pull &&
+        docker compose -f docker-compose.deploy.yml build --no-cache ch-api ch-web &&
+        docker compose -f docker-compose.deploy.yml up -d ch-api ch-web
+      "
+  environment:
+    name: production
+    url: https://commercehunter.dnada.cloud

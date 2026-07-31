@@ -1,0 +1,100 @@
+services:
+  ch-postgres:
+    image: postgres:16-alpine
+    container_name: ch-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - ch-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+
+  ch-api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: ch-api
+    restart: always
+    depends_on:
+      ch-postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@ch-postgres:5432/${POSTGRES_DB}
+      NODE_ENV: production
+      PORT_API: 3001
+      HOST: 0.0.0.0
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+      SIRENE_API_TOKEN: ${SIRENE_API_TOKEN}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      # "false" force le billing dormant même avec une clé Stripe configurée
+      BILLING_ENABLED: ${BILLING_ENABLED:-}
+      # "false" ferme les inscriptions publiques (les invitations restent ouvertes)
+      REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-}
+      GOOGLE_PLACES_API_KEY: ${GOOGLE_PLACES_API_KEY:-}
+      PAGESPEED_API_KEY: ${PAGESPEED_API_KEY:-}
+      LOG_LEVEL: ${LOG_LEVEL:-warn}
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      FRONTEND_URL: ${FRONTEND_URL:-https://commercehunter.dnada.cloud}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3001/api/v1/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - internal
+      - caddy_network
+
+  ch-web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+        NEXT_PUBLIC_BILLING_ENABLED: ${NEXT_PUBLIC_BILLING_ENABLED:-true}
+        NEXT_PUBLIC_REGISTRATION_ENABLED: ${NEXT_PUBLIC_REGISTRATION_ENABLED:-true}
+    container_name: ch-web
+    restart: always
+    depends_on:
+      ch-api:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      # Mentions légales de l'instance (lues au runtime — voir apps/web/src/config/legal.ts)
+      LEGAL_OWNER_NAME: ${LEGAL_OWNER_NAME:-}
+      LEGAL_FORM: ${LEGAL_FORM:-}
+      LEGAL_SIREN: ${LEGAL_SIREN:-}
+      LEGAL_SIRET: ${LEGAL_SIRET:-}
+      LEGAL_VAT: ${LEGAL_VAT:-}
+      LEGAL_ADDRESS: ${LEGAL_ADDRESS:-}
+      LEGAL_EMAIL: ${LEGAL_EMAIL:-}
+      LEGAL_ACTIVITY: ${LEGAL_ACTIVITY:-}
+      LEGAL_HOST_NAME: ${LEGAL_HOST_NAME:-}
+      LEGAL_HOST_WEBSITE: ${LEGAL_HOST_WEBSITE:-}
+      LEGAL_HOST_ADDRESS: ${LEGAL_HOST_ADDRESS:-}
+    networks:
+      - caddy_network
+
+volumes:
+  ch-pgdata:
+
+networks:
+  internal:
+    driver: bridge
+  caddy_network:
+    external: true
