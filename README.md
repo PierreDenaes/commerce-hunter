@@ -62,6 +62,26 @@ CommerceHunter detecte automatiquement les **opportunites de creation, refonte o
 
 ---
 
+## Comment ça marche
+
+```mermaid
+flowchart LR
+    A["📮 Code postal<br/>+ filtres APE"] --> B["🏛️ SIRENE<br/>(INSEE)"]
+    B --> C["📍 Google Places<br/>tél · site · GPS"]
+    C --> D{"Site web ?"}
+    D -- "Non" --> E["🔥 Priorité HIGH<br/>classement immédiat"]
+    D -- "Oui" --> F["🔍 Audit SEO<br/>60+ vérifications"]
+    F --> G["⚡ PageSpeed<br/>LCP · CLS · TTFB"]
+    G --> H["🧮 Scores 0-100<br/>SEO + digital"]
+    H --> I["🏷️ Priorité<br/>HIGH / MEDIUM / LOW"]
+    E --> J["📊 Dashboard<br/>CSV · PDF · IA"]
+    I --> J
+```
+
+Les analyses tournent en **jobs asynchrones par lots de 50** (pg-boss) : un scan de 800 entreprises survit aux redéploiements et reprend là où il s'était arrêté. Les priorités reflètent l'**opportunité commerciale** : pas de site ou présence faible → `HIGH`, site déjà excellent → `LOW`.
+
+---
+
 ## Stack technique
 
 | Couche | Technologies |
@@ -83,8 +103,8 @@ CommerceHunter detecte automatiquement les **opportunites de creation, refonte o
 - Filtrage par type d'entite (Commerce / PME / Les deux)
 - Filtrage par **codes APE** (activite principale) et tranche d'effectifs
 - Integration SIRENE (INSEE) avec pagination cursor
-- Enrichissement Google Places (coordonnees, telephone, site web)
-- Traitement asynchrone via workers en arriere-plan
+- Enrichissement Google Places (coordonnees, telephone, site web) avec cache 30 jours
+- Traitement asynchrone via une file de jobs durable (pg-boss) : analyses **par lots de 50**, reprise automatique apres redemarrage
 
 ### Analyse de presence web (US2)
 - Detection automatique de site web
@@ -97,7 +117,7 @@ CommerceHunter detecte automatiquement les **opportunites de creation, refonte o
 - **Securite** : HSTS, CSP, X-Frame-Options
 - **Social** : Open Graph, Twitter Card, image de partage og:image, donnees structurees
 - Extraction des **emails de contact** (crawl de quelques pages)
-- Score SEO (0-100) + Score digital (0-100) + Priorite (HIGH / MEDIUM / LOW)
+- Score SEO (0-100) + Score digital (0-100) + **Priorite = opportunite commerciale** : `HIGH` si pas de site ou presence faible, `LOW` si le site est deja excellent
 
 ### Recommandations IA (optionnel)
 - Generees **a la demande** depuis la fiche entreprise (Claude, cle API requise)
@@ -117,11 +137,10 @@ CommerceHunter detecte automatiquement les **opportunites de creation, refonte o
 - **CSV** : export de toute la liste filtree
 - **PDF** : rapport d'audit individuel par commerce (plan Pro requis)
 
-### Facturation et quotas (US5)
-- Integration **Stripe** (abonnements + webhooks)
-- 3 plans : Starter, Pro, Agency
-- Limites par nombre de villes et quota d'analyses mensuelles
-- Reset automatique au cycle de facturation
+### Facturation et quotas (US5 — dormant par defaut)
+- Sans cle Stripe, toutes les organisations sont sur un plan **Self-hosted illimite** : rien a configurer
+- Integration **Stripe** disponible (abonnements + webhooks) pour qui veut operer l'outil en SaaS
+- Quotas d'analyses mensuels avec reservation atomique (seules les entreprises **avec site** en consomment)
 
 ### Multi-utilisateurs (US6)
 - Invitations par email avec token et expiration
@@ -154,7 +173,7 @@ CommerceHunter/
 │       │   ├── components/     # Composants React
 │       │   ├── contexts/       # Contexts (AuthContext)
 │       │   └── lib/            # Utilitaires client (API client, auth)
-│       ├── public/             # Assets statiques (logo, favicons, hero)
+│       ├── public/             # Assets statiques (logo, favicons, captures d'ecran)
 │       └── Dockerfile
 │
 ├── packages/
@@ -165,8 +184,7 @@ CommerceHunter/
 │   └── eslint-config/          # Configuration ESLint partagee
 │
 ├── docker-compose.yml          # Dev local (PostgreSQL uniquement)
-├── docker-compose.prod.yml     # Production (PostgreSQL + API + Web + Nginx)
-├── docker-compose.deploy.yml   # Deploiement VPS (PostgreSQL + API + Web + Caddy)
+├── docker-compose.deploy.yml   # Production VPS (PostgreSQL + API + Web, derriere Caddy)
 ├── deploy.sh                   # Script de deploiement automatise
 ├── turbo.json                  # Configuration Turborepo
 └── pnpm-workspace.yaml         # Configuration pnpm workspaces
@@ -176,16 +194,34 @@ CommerceHunter/
 
 ## Modele de donnees
 
-```
-Organization ──┬── User (1:N)          Roles: ADMIN, USER
-               ├── Scan (1:N)          Config: code postal, rayon, filtres
-               ├── Invitation (1:N)    Token, expiration, statut
-               └── SubscriptionPlan    Starter / Pro / Agency
+```mermaid
+erDiagram
+    Organization ||--o{ User : "membres (ADMIN / USER)"
+    Organization ||--o{ Scan : "scans"
+    Organization ||--o{ Invitation : "invitations"
+    Organization }o--|| SubscriptionPlan : "plan"
+    Scan ||--o{ ScanBusiness : ""
+    Business ||--o{ ScanBusiness : ""
+    Business ||--o| Analysis : "audit"
 
-Scan ──── ScanBusiness ──── Business   Relation N:M
-                              │
-                           Analysis     Score SEO, score digital, priorite,
-                                        metriques PageSpeed, audit complet
+    Scan {
+        string postalCode
+        string entityType
+        string[] apeCategories
+        string status
+    }
+    Business {
+        string siret
+        string name
+        string website
+        string phone
+    }
+    Analysis {
+        int seoScore
+        int digitalScore
+        enum priority "HIGH MEDIUM LOW"
+        json aiRecommendations
+    }
 ```
 
 ---
@@ -203,8 +239,8 @@ Scan ──── ScanBusiness ──── Business   Relation N:M
 
 ```bash
 # 1. Cloner le depot
-git clone https://github.com/your-org/CommerceHunter.git
-cd CommerceHunter
+git clone https://github.com/PierreDenaes/commerce-hunter.git
+cd commerce-hunter
 
 # 2. Installer les dependances
 corepack enable
@@ -320,7 +356,7 @@ CommerceHunter collecte des données du registre public SIRENE. Les **entreprene
 
 ```bash
 # Build et lancement de tous les services
-docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.deploy.yml up -d --build
 ```
 
 ### VPS avec Caddy
@@ -353,6 +389,7 @@ Services Docker :
 | `POST` | `/scans` | Creer un scan |
 | `GET` | `/scans` | Lister les scans |
 | `GET` | `/scans/:id` | Detail d'un scan |
+| `POST` | `/scans/:id/reanalyze` | Relancer toutes les analyses d'un scan (par lots) |
 | `GET` | `/businesses` | Lister les commerces (avec filtres) |
 | `GET` | `/businesses/:id` | Detail d'un commerce + analyse |
 | `POST` | `/businesses/:id/reanalyze` | Relancer l'analyse d'un commerce |
@@ -368,18 +405,6 @@ Services Docker :
 | `GET` | `/organization/users` | Lister les membres |
 | `POST` | `/organization/invitations` | Inviter un membre |
 | `GET` | `/health` | Etat de sante du service |
-
----
-
-## Plans tarifaires
-
-| | Starter | Pro | Agency |
-|---|---|---|---|
-| Villes | 1 | 5 | Illimite |
-| Analyses / mois | 50 | 200 | Illimite |
-| Export CSV | Oui | Oui | Oui |
-| Export PDF | - | Oui | Oui |
-| Membres equipe | 1 | 3 | 10 |
 
 ---
 
