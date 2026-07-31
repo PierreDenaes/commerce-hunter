@@ -14,6 +14,7 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![pnpm](https://img.shields.io/badge/pnpm-9.x-F69220?logo=pnpm&logoColor=white)](https://pnpm.io/)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue)](LICENSE)
+[![CI](https://github.com/PierreDenaes/commerce-hunter/actions/workflows/ci.yml/badge.svg)](https://github.com/PierreDenaes/commerce-hunter/actions/workflows/ci.yml)
 
 <br />
 
@@ -66,12 +67,22 @@ CommerceHunter detecte automatiquement les **opportunites de creation, refonte o
 ### Analyse de presence web (US2)
 - Detection automatique de site web
 - **Audit SEO technique** : HTTPS, robots.txt, sitemap, balises meta, canonical, favicon
-- **SEO on-page** : title, meta description, hierarchie H1-H6, images alt
+- **SEO on-page** : title, meta description (avec longueurs optimales), hierarchie H1-H6, images alt
 - **SEO local** : ville dans title/H1, Schema.org, Google Maps
+- **Qualite du contenu** : mots visibles, dependance JavaScript, liens internes casses, JSON-LD invalide
+- **Plateforme** : CMS detecte (WordPress, Wix, Shopify…), hebergement gratuit / page plateforme
 - **Performance** : LCP, CLS, TTFB, FCP via PageSpeed Insights API
 - **Securite** : HSTS, CSP, X-Frame-Options
-- **Social** : Open Graph, Twitter Card, donnees structurees
+- **Social** : Open Graph, Twitter Card, image de partage og:image, donnees structurees
+- Extraction des **emails de contact** (crawl de quelques pages)
 - Score SEO (0-100) + Score digital (0-100) + Priorite (HIGH / MEDIUM / LOW)
+
+### Recommandations IA (optionnel)
+- Generees **a la demande** depuis la fiche entreprise (Claude, cle API requise)
+- Synthese commerciale personnalisee au metier et a la ville, en langage non technique
+- Actions priorisees par impact business, quick wins, **brouillon d'email de prospection**
+- Integrees au rapport PDF (sans l'email, reserve au prestataire)
+- Stockees en base : une seule generation par entreprise (~2-4 centimes)
 
 ### Dashboard et priorisation (US3)
 - Statistiques agregees (total commerces, repartition Commerce/PME, % sans site, scores moyens)
@@ -218,18 +229,29 @@ SIRENE_API_TOKEN=your-sirene-api-token
 GOOGLE_PLACES_API_KEY=your-google-api-key
 PAGESPEED_API_KEY=your-pagespeed-api-key
 
-# Stripe (optionnel en dev)
+# Recommandations IA (optionnel — sans cle, la fonctionnalite est masquee)
+ANTHROPIC_API_KEY=sk-ant-xxx
+AI_MODEL=claude-opus-4-8
+
+# Stripe (optionnel — sans cle, billing dormant : plan Self-hosted illimite)
 STRIPE_SECRET_KEY=sk_test_xxx
 STRIPE_WEBHOOK_SECRET=whsec_xxx
-STRIPE_PRICE_ID_STARTER=price_xxx
-STRIPE_PRICE_ID_PRO=price_xxx
-STRIPE_PRICE_ID_AGENCY=price_xxx
+# BILLING_ENABLED=false / NEXT_PUBLIC_BILLING_ENABLED=false pour forcer l'extinction
+
+# Inscriptions publiques (instance vitrine : fermez-les pour proteger vos cles API)
+# REGISTRATION_ENABLED=false / NEXT_PUBLIC_REGISTRATION_ENABLED=false
+
+# Compte admin seede (optionnel — sinon passez par /register)
+# ADMIN_EMAIL=admin@example.com
+# ADMIN_PASSWORD=change-me
 
 # App
 NEXT_PUBLIC_API_URL=http://localhost:3001
 CORS_ORIGIN=http://localhost:3000
 NODE_ENV=development
 ```
+
+> La liste complete (dont les variables `LEGAL_*` des mentions legales) est dans [`.env.example`](.env.example).
 
 > **Note** : PostgreSQL tourne sur le port **5433** (et non 5432) pour eviter les conflits avec une installation locale.
 
@@ -311,10 +333,13 @@ Services Docker :
 | `GET` | `/scans/:id` | Detail d'un scan |
 | `GET` | `/businesses` | Lister les commerces (avec filtres) |
 | `GET` | `/businesses/:id` | Detail d'un commerce + analyse |
-| `POST` | `/businesses/:id/analyze` | Lancer l'analyse d'un commerce |
+| `POST` | `/businesses/:id/reanalyze` | Relancer l'analyse d'un commerce |
+| `POST` | `/businesses/:id/ai-recommendations` | Generer les recommandations IA |
 | `GET` | `/dashboard/stats` | Statistiques agregees |
-| `GET` | `/export/csv` | Export CSV |
+| `GET` | `/export/csv?scanId=...&columns=...` | Export CSV (colonnes selectionnables) |
+| `GET` | `/export/prospect-list-csv/:id` | Export CSV d'une liste de prospects |
 | `GET` | `/export/pdf/:businessId` | Export PDF (rapport d'audit) |
+| `GET/POST` | `/prospect-lists` | Listes de prospects |
 | `POST` | `/billing/create-checkout` | Creer une session Stripe Checkout |
 | `GET` | `/billing/portal` | Portail client Stripe |
 | `POST` | `/billing/webhook` | Webhook Stripe |
