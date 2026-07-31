@@ -71,9 +71,11 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
+        // sticky + h-screen : la sidebar reste visible pendant le défilement
+        // (pas d'overflow ici — il couperait les infobulles du mode replié).
         // z-40 : les infobulles du rail doivent passer au-dessus des cartes
         // glass du contenu (stacking contexts créés par backdrop-filter)
-        "glass relative z-40 hidden flex-col border-r border-border transition-[width] duration-200 md:flex",
+        "glass sticky top-0 z-40 hidden h-screen flex-col border-r border-border transition-[width] duration-200 md:flex",
         collapsed ? "w-16" : "w-64",
       )}
     >
