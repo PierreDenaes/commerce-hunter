@@ -199,9 +199,13 @@ erDiagram
     Organization ||--o{ User : "membres (ADMIN / USER)"
     Organization ||--o{ Scan : "scans"
     Organization ||--o{ Invitation : "invitations"
+    Organization ||--o{ ProspectList : "listes de prospects"
     Organization }o--|| SubscriptionPlan : "plan"
+    User ||--o{ ProspectList : "creees par"
     Scan ||--o{ ScanBusiness : ""
     Business ||--o{ ScanBusiness : ""
+    ProspectList ||--o{ ProspectListBusiness : ""
+    Business ||--o{ ProspectListBusiness : ""
     Business ||--o| Analysis : "audit"
 
     Scan {
@@ -223,6 +227,8 @@ erDiagram
         json aiRecommendations
     }
 ```
+
+> Tables techniques omises pour la lisibilite : `RefreshToken`, `PasswordResetToken` (auth).
 
 ---
 
