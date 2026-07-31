@@ -21,6 +21,18 @@ interface ScanJobData {
   scanId: string;
 }
 
+interface AnalysisJobData {
+  scanId: string;
+  // Sous-ensemble à traiter (lot). Absent = toutes les entreprises du scan
+  // (compatibilité avec les jobs déjà en file avant le découpage en lots).
+  businessIds?: string[];
+}
+
+// Taille de lot : 50 analyses × ~1-2 min / 5 concurrentes ≈ 10-20 min par job,
+// très en dessous de l'expiration de 90 min. Un gros scan avance lot par lot
+// et un retry ne rejoue qu'un lot (les analyses fraîches sont sautées).
+const ANALYSIS_CHUNK_SIZE = 50;
+
 let boss: PgBoss | null = null;
 let bossStarting: Promise<PgBoss> | null = null;
 
@@ -51,12 +63,38 @@ export async function enqueueScan(
   await b.send(SCAN_QUEUE, { scanId } satisfies ScanJobData, JOB_OPTIONS);
 }
 
+/** Enfile les analyses d'une liste d'entreprises, découpées en lots. */
 export async function enqueueAnalyses(
   scanId: string,
   log: FastifyBaseLogger,
+  businessIds: string[],
 ): Promise<void> {
   const b = await getBoss(log);
-  await b.send(ANALYSIS_QUEUE, { scanId } satisfies ScanJobData, JOB_OPTIONS);
+  for (let i = 0; i < businessIds.length; i += ANALYSIS_CHUNK_SIZE) {
+    const chunk = businessIds.slice(i, i + ANALYSIS_CHUNK_SIZE);
+    await b.send(
+      ANALYSIS_QUEUE,
+      { scanId, businessIds: chunk } satisfies AnalysisJobData,
+      JOB_OPTIONS,
+    );
+  }
+  log.info(
+    { scanId, total: businessIds.length, chunks: Math.ceil(businessIds.length / ANALYSIS_CHUNK_SIZE) },
+    "Analysis jobs enqueued",
+  );
+}
+
+/** Enfile les analyses de TOUTES les entreprises d'un scan (par lots). */
+export async function enqueueAnalysesForScan(
+  scanId: string,
+  prisma: PrismaClient,
+  log: FastifyBaseLogger,
+): Promise<void> {
+  const scanBusinesses = await prisma.scanBusiness.findMany({
+    where: { scanId },
+    select: { businessId: true },
+  });
+  await enqueueAnalyses(scanId, log, scanBusinesses.map((sb) => sb.businessId));
 }
 
 /**
@@ -74,16 +112,19 @@ export async function startQueueWorkers(
     for (const job of jobs) {
       log.info({ scanId: job.data.scanId, jobId: job.id }, "Scan job started");
       await processScan(job.data.scanId, prisma, log);
-      // L'analyse est un job séparé : si elle échoue/est interrompue,
-      // elle est retentée sans refaire la collecte SIRENE/Places.
-      await enqueueAnalyses(job.data.scanId, log);
+      // Les analyses sont des jobs séparés, découpés en lots : un échec ou
+      // une interruption ne rejoue qu'un lot, sans refaire la collecte.
+      await enqueueAnalysesForScan(job.data.scanId, prisma, log);
     }
   });
 
-  await b.work<ScanJobData>(ANALYSIS_QUEUE, async (jobs: Job<ScanJobData>[]) => {
+  await b.work<AnalysisJobData>(ANALYSIS_QUEUE, async (jobs: Job<AnalysisJobData>[]) => {
     for (const job of jobs) {
-      log.info({ scanId: job.data.scanId, jobId: job.id }, "Analysis job started");
-      await processAnalyses(job.data.scanId, prisma, log);
+      log.info(
+        { scanId: job.data.scanId, jobId: job.id, batch: job.data.businessIds?.length ?? "all" },
+        "Analysis job started",
+      );
+      await processAnalyses(job.data.scanId, prisma, log, job.data.businessIds);
     }
   });
 

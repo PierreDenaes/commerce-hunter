@@ -13,9 +13,13 @@ export const SCORING_WEIGHTS = {
 /**
  * Priority thresholds (FR-011)
  */
+// Priorité = OPPORTUNITÉ commerciale : plus la présence digitale est faible,
+// plus le prospect est prioritaire. HIGH: score < 40 ; MEDIUM: score < 65 ;
+// LOW: site déjà correct (peu à vendre). Cohérent avec le forçage HIGH des
+// entreprises sans site.
 export const PRIORITY_THRESHOLDS = {
-  HIGH: 80,
-  MEDIUM: 60,
+  HIGH_BELOW: 40,
+  MEDIUM_BELOW: 65,
 } as const;
 
 /**

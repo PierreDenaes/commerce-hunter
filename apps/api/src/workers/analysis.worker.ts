@@ -18,14 +18,19 @@ export async function processAnalyses(
   scanId: string,
   prisma: PrismaClient,
   log: FastifyBaseLogger,
+  onlyBusinessIds?: string[],
 ): Promise<void> {
-  // Get all businesses for this scan
-  const scanBusinesses = await prisma.scanBusiness.findMany({
-    where: { scanId },
-    select: { businessId: true },
-  });
-
-  const allBusinessIds = scanBusinesses.map((sb) => sb.businessId);
+  // Lot fourni par la queue, ou toutes les entreprises du scan (legacy)
+  let allBusinessIds: string[];
+  if (onlyBusinessIds && onlyBusinessIds.length > 0) {
+    allBusinessIds = onlyBusinessIds;
+  } else {
+    const scanBusinesses = await prisma.scanBusiness.findMany({
+      where: { scanId },
+      select: { businessId: true },
+    });
+    allBusinessIds = scanBusinesses.map((sb) => sb.businessId);
+  }
   if (allBusinessIds.length === 0) {
     log.info({ scanId }, "No businesses to analyze");
     return;

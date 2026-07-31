@@ -229,31 +229,30 @@ describe("calculateDigitalScore — hébergement gratuit", () => {
   });
 });
 
-describe("assignPriority", () => {
-  it("assigns HIGH for score >= 80", () => {
-    expect(assignPriority(80)).toBe("HIGH");
-    expect(assignPriority(100)).toBe("HIGH");
-    expect(assignPriority(95)).toBe("HIGH");
+describe("assignPriority — priorité = opportunité (score faible → HIGH)", () => {
+  it("assigns HIGH pour un score < 40 (grosse opportunité)", () => {
+    expect(assignPriority(0)).toBe("HIGH");
+    expect(assignPriority(25)).toBe("HIGH");
+    expect(assignPriority(39)).toBe("HIGH");
   });
 
-  it("assigns MEDIUM for score >= 60 and < 80", () => {
-    expect(assignPriority(60)).toBe("MEDIUM");
-    expect(assignPriority(79)).toBe("MEDIUM");
-    expect(assignPriority(70)).toBe("MEDIUM");
+  it("assigns MEDIUM pour un score entre 40 et 64", () => {
+    expect(assignPriority(40)).toBe("MEDIUM");
+    expect(assignPriority(50)).toBe("MEDIUM");
+    expect(assignPriority(64)).toBe("MEDIUM");
   });
 
-  it("assigns LOW for score < 60", () => {
-    expect(assignPriority(59)).toBe("LOW");
-    expect(assignPriority(0)).toBe("LOW");
-    expect(assignPriority(30)).toBe("LOW");
+  it("assigns LOW pour un score >= 65 (site déjà correct)", () => {
+    expect(assignPriority(65)).toBe("LOW");
+    expect(assignPriority(80)).toBe("LOW");
+    expect(assignPriority(100)).toBe("LOW");
   });
 
-  it("correctly handles boundary at 79 → MEDIUM", () => {
-    expect(assignPriority(79)).toBe("MEDIUM");
-  });
-
-  it("correctly handles boundary at 80 → HIGH", () => {
-    expect(assignPriority(80)).toBe("HIGH");
+  it("frontières exactes : 39 → HIGH, 40 → MEDIUM, 64 → MEDIUM, 65 → LOW", () => {
+    expect(assignPriority(39)).toBe("HIGH");
+    expect(assignPriority(40)).toBe("MEDIUM");
+    expect(assignPriority(64)).toBe("MEDIUM");
+    expect(assignPriority(65)).toBe("LOW");
   });
 });
 
@@ -322,7 +321,8 @@ describe("scoreAnalysis", () => {
 
     expect(result.seoScore).toBe(100);
     expect(result.digitalScore).toBeGreaterThan(80);
-    expect(result.priority).toBe("HIGH");
+    // Site excellent → rien à vendre → priorité basse
+    expect(result.priority).toBe("LOW");
   });
 
   it("handles NO_WEBSITE business correctly — forced HIGH priority", () => {

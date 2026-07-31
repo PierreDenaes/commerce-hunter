@@ -165,8 +165,9 @@ export function calculateDigitalScore(
 export function assignPriority(
   digitalScore: number,
 ): "HIGH" | "MEDIUM" | "LOW" {
-  if (digitalScore >= PRIORITY_THRESHOLDS.HIGH) return "HIGH";
-  if (digitalScore >= PRIORITY_THRESHOLDS.MEDIUM) return "MEDIUM";
+  // Priorité = opportunité : score faible → prospect chaud
+  if (digitalScore < PRIORITY_THRESHOLDS.HIGH_BELOW) return "HIGH";
+  if (digitalScore < PRIORITY_THRESHOLDS.MEDIUM_BELOW) return "MEDIUM";
   return "LOW";
 }
 

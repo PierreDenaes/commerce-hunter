@@ -137,8 +137,9 @@ export default async function scanRoutes(app: FastifyInstance) {
         data: { status: "PENDING", errorMessage: null },
       });
 
-      // Job durable : survit aux redeploys, retenté automatiquement
-      await enqueueAnalyses(scan.id, request.log);
+      // Jobs durables, découpés en lots : survivent aux redeploys, chaque
+      // lot est retenté indépendamment sans dépasser la fenêtre d'expiration
+      await enqueueAnalyses(scan.id, request.log, businessIds);
 
       return reply.status(202).send({
         message: "Re-analyse lancée",
