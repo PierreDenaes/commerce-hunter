@@ -35,14 +35,14 @@ export const metadata: Metadata = {
     title: "CommerceHunter — Trouvez les entreprises sans présence digitale",
     description:
       "Scannez un code postal, analysez le score digital de chaque entreprise et exportez vos prospects qualifiés. Prospection automatisée pour agences web.",
-    images: [{ url: "/hero-commerce-hunter.png", width: 1200, height: 630, alt: "CommerceHunter" }],
+    images: [{ url: "/screenshots/fiche-entreprise.png", width: 1440, height: 900, alt: "CommerceHunter — audit digital et recommandations IA" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "CommerceHunter — Trouvez les entreprises sans présence digitale",
     description:
       "Prospection automatisée pour agences web : scan SIRENE, score digital, exports PDF/CSV.",
-    images: ["/hero-commerce-hunter.png"],
+    images: ["/screenshots/fiche-entreprise.png"],
   },
   robots: { index: true, follow: true },
   icons: {

@@ -18,7 +18,7 @@
 
 <br />
 
-<img src="apps/web/public/hero-commerce-hunter.png" alt="CommerceHunter Hero" width="700" />
+<img src="apps/web/public/screenshots/fiche-entreprise.png" alt="Fiche entreprise CommerceHunter : score digital, radar SEO et recommandations IA" width="800" />
 
 <br />
 
@@ -37,6 +37,28 @@ CommerceHunter detecte automatiquement les **opportunites de creation, refonte o
 - **Agences web** : identifier les commerces sans site ou avec un site obsolete dans une zone geographique
 - **Freelances** : constituer un portefeuille de prospects qualifies avec audit SEO pre-rempli
 - **Consultants digitaux** : fournir des rapports PDF d'audit a leurs clients
+
+---
+
+## La plateforme en images
+
+> Donnees de demonstration — entreprises fictives.
+
+**Un scan, une liste de prospects qualifies** — scores SEO et digital, priorites, filtres, colonnes personnalisables :
+
+<img src="apps/web/public/screenshots/entreprises.png" alt="Tableau des entreprises analysees avec scores et priorites" width="800" />
+
+**Recommandations IA** — synthese commerciale, actions priorisees par impact et brouillon d'email de prospection generes a la demande :
+
+<img src="apps/web/public/screenshots/recommandations-ia.png" alt="Recommandations IA : actions priorisees et brouillon d'email" width="800" />
+
+**Rapport PDF d'audit** — le livrable a remettre au prospect :
+
+<img src="apps/web/public/screenshots/rapport-pdf.png" alt="Rapport PDF d'audit digital" width="500" />
+
+**Dashboard** — vue d'ensemble par scan : secteurs, scores moyens, priorites :
+
+<img src="apps/web/public/screenshots/dashboard.png" alt="Dashboard CommerceHunter" width="800" />
 
 ---
 
