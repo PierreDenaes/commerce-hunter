@@ -308,6 +308,7 @@ export default function BusinessDetailPage() {
                 size={160}
                 label="/100"
               />
+              {a?.analyzedAt && <AnalyzedAtBadge analyzedAt={a.analyzedAt} />}
             </GlassCard>
 
             {a && a.scores.seoScore !== null && (
@@ -592,10 +593,44 @@ export default function BusinessDetailPage() {
             </GlassCard>
           )}
 
+          {a && a.status === "SITE_DOWN" && (
+            <GlassCard variant="subtle" className="mt-6">
+              <div className="flex items-start gap-3">
+                <span
+                  className="mt-0.5 inline-flex h-6 shrink-0 items-center rounded-full bg-warning/15 px-2.5 text-xs font-semibold text-warning"
+                >
+                  Site injoignable
+                </span>
+                <div className="text-sm">
+                  <p className="font-medium">
+                    Le site déclaré ne répond plus (domaine expiré ou serveur
+                    arrêté).
+                  </p>
+                  <p className="mt-1 text-muted-foreground">
+                    Prospect à fort potentiel : cette entreprise a déjà investi
+                    dans un site web et n&apos;en a plus. Argument d&apos;accroche
+                    tout trouvé.
+                  </p>
+                  {a.analyzedAt && (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Constaté le{" "}
+                      {new Date(a.analyzedAt).toLocaleDateString("fr-FR", {
+                        day: "numeric",
+                        month: "long",
+                        year: "numeric",
+                      })}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </GlassCard>
+          )}
+
           {a && a.status === "FAILED" && (
             <GlassCard variant="subtle" className="mt-6">
               <p className="text-sm text-destructive">
-                L&apos;analyse a échoué. Utilisez le bouton re-analyser.
+                L&apos;analyse a échoué (erreur technique passagère, ex. délai
+                dépassé). Réessayez avec le bouton re-analyser.
               </p>
             </GlassCard>
           )}
@@ -607,6 +642,27 @@ export default function BusinessDetailPage() {
         onSuccess={() => showSuccess("Entreprise ajoutée à la liste")}
       />
     </div>
+  );
+}
+
+// Date de l'analyse affichée sous le score ; passe en avertissement au-delà
+// de 60 jours pour signaler une donnée potentiellement périmée.
+function AnalyzedAtBadge({ analyzedAt }: { analyzedAt: string }) {
+  const date = new Date(analyzedAt);
+  const ageDays = Math.floor((Date.now() - date.getTime()) / 86_400_000);
+  const stale = ageDays > 60;
+  return (
+    <p
+      className={`text-xs ${stale ? "font-medium text-warning" : "text-muted-foreground"}`}
+    >
+      Analysé le{" "}
+      {date.toLocaleDateString("fr-FR", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      })}
+      {stale && " — données anciennes, pensez à ré-analyser"}
+    </p>
   );
 }
 

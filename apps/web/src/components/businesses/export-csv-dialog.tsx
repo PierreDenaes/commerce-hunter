@@ -32,6 +32,7 @@ export const EXPORT_COLUMNS = [
   { key: "digitalScore", label: "Score digital" },
   { key: "priority", label: "Priorité" },
   { key: "analysisStatus", label: "Statut analyse" },
+  { key: "analyzedAt", label: "Analysé le" },
 ] as const;
 
 const STORAGE_KEY = "ch-export-csv-columns";

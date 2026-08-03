@@ -347,6 +347,7 @@ export default async function prospectListRoutes(app: FastifyInstance) {
                     priority: true,
                     status: true,
                     contactEmails: true,
+                    analyzedAt: true,
                   },
                 },
               },
@@ -372,6 +373,7 @@ export default async function prospectListRoutes(app: FastifyInstance) {
         digitalScore: entry.business.analysis?.digitalScore ?? null,
         priority: entry.business.analysis?.priority ?? null,
         analysisStatus: entry.business.analysis?.status ?? null,
+        analyzedAt: entry.business.analysis?.analyzedAt ?? null,
         contactEmails: entry.business.analysis?.contactEmails ?? [],
         addedAt: entry.createdAt,
       }));

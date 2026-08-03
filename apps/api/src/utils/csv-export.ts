@@ -9,6 +9,7 @@ interface CsvAnalysis {
   priority: string | null;
   status: string;
   contactEmails?: string[];
+  analyzedAt?: Date | string | null;
 }
 
 export interface CsvBusinessRow {
@@ -58,6 +59,13 @@ export const CSV_COLUMNS = {
   analysisStatus: {
     header: "Statut analyse",
     value: (b: CsvBusinessRow) => b.analysis?.status,
+  },
+  analyzedAt: {
+    header: "Analysé le",
+    value: (b: CsvBusinessRow) => {
+      const d = b.analysis?.analyzedAt;
+      return d ? new Date(d).toISOString().slice(0, 10) : "";
+    },
   },
 } as const;
 

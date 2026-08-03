@@ -33,6 +33,7 @@ enum AnalysisStatus {
   COMPLETED
   FAILED
   NO_WEBSITE
+  SITE_DOWN
 }
 
 enum Priority {

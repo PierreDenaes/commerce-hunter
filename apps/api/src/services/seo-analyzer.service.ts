@@ -6,6 +6,50 @@ import type { FastifyBaseLogger } from "fastify";
 import { Agent, fetch as undiciFetch, type Response as UndiciResponse } from "undici";
 import { withRetry } from "../utils/retry.js";
 
+// ─── Classification des échecs réseau ─────────────────────
+
+/**
+ * Site durablement injoignable (domaine sans DNS, connexion refusée…) —
+ * à distinguer d'une erreur transitoire (timeout, reset) : c'est un signal
+ * de prospection, pas une panne d'analyse.
+ */
+export class SiteUnreachableError extends Error {
+  constructor(url: string, cause: unknown) {
+    super(`Site injoignable: ${url}`, { cause });
+    this.name = "SiteUnreachableError";
+  }
+}
+
+// Codes Node signalant une inaccessibilité durable. ECONNRESET, EAI_AGAIN
+// (DNS temporaire) et les timeouts restent transitoires : pas de SITE_DOWN à tort.
+const UNREACHABLE_CODES = new Set([
+  "ENOTFOUND",
+  "ECONNREFUSED",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "ERR_TLS_CERT_ALTNAME_INVALID",
+]);
+
+export function classifyFetchError(
+  err: unknown,
+): "unreachable" | "transient" {
+  const codes = new Set<string>();
+  const visit = (e: unknown, depth: number): void => {
+    if (!e || typeof e !== "object" || depth > 5) return;
+    const code = (e as NodeJS.ErrnoException).code;
+    if (typeof code === "string") codes.add(code);
+    if (e instanceof AggregateError) {
+      for (const inner of e.errors) visit(inner, depth + 1);
+    }
+    visit((e as Error).cause, depth + 1);
+  };
+  visit(err, 0);
+  for (const code of codes) {
+    if (UNREACHABLE_CODES.has(code)) return "unreachable";
+  }
+  return "transient";
+}
+
 // ─── Types ────────────────────────────────────────────────
 
 export interface SeoAnalysisResult {
@@ -148,22 +192,30 @@ export class SeoAnalyzerService {
   async analyze(url: string, city: string): Promise<SeoAnalysisResult> {
     // ─── Fetch page ─────────────────────────────────────
     const startTime = Date.now();
-    const response = await withRetry(
-      () =>
-        safeFetch(url, {
-          signal: AbortSignal.timeout(TIMEOUT_MS),
-          headers: {
-            "User-Agent":
-              "Mozilla/5.0 (compatible; CommerceHunter/1.0; +https://commercehunter.fr)",
-            Accept: "text/html,application/xhtml+xml",
-          },
-          // @ts-expect-error -- undici Agent type mismatch across versions
-          dispatcher: insecureTlsAgent,
-        }, MAX_REDIRECTS),
-      this.log,
-      `SEO fetch ${url}`,
-      { maxRetries: 2, baseDelayMs: 1000 },
-    );
+    let response: UndiciResponse;
+    try {
+      response = await withRetry(
+        () =>
+          safeFetch(url, {
+            signal: AbortSignal.timeout(TIMEOUT_MS),
+            headers: {
+              "User-Agent":
+                "Mozilla/5.0 (compatible; CommerceHunter/1.0; +https://commercehunter.fr)",
+              Accept: "text/html,application/xhtml+xml",
+            },
+            // @ts-expect-error -- undici Agent type mismatch across versions
+            dispatcher: insecureTlsAgent,
+          }, MAX_REDIRECTS),
+        this.log,
+        `SEO fetch ${url}`,
+        { maxRetries: 2, baseDelayMs: 1000 },
+      );
+    } catch (err) {
+      if (classifyFetchError(err) === "unreachable") {
+        throw new SiteUnreachableError(url, err);
+      }
+      throw err;
+    }
     const responseTimeMs = Date.now() - startTime;
 
     const html = await response.text();

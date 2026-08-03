@@ -31,7 +31,34 @@ const HIDEABLE_COLUMNS = [
   { key: "seo", label: "Score SEO" },
   { key: "digital", label: "Score digital" },
   { key: "priority", label: "Priorité" },
+  { key: "analyzedAt", label: "Analysé le" },
 ] as const;
+
+// Badge site mort + date d'analyse : périmée au-delà de 60 jours.
+const STALE_ANALYSIS_DAYS = 60;
+
+function SiteDownBadge() {
+  return (
+    <span className="inline-flex items-center rounded-full bg-warning/15 px-2 py-0.5 text-xs font-semibold text-warning whitespace-nowrap">
+      Site mort
+    </span>
+  );
+}
+
+function AnalyzedAtCell({ analyzedAt }: { analyzedAt: string | null }) {
+  if (!analyzedAt) return <span className="text-muted-foreground">—</span>;
+  const date = new Date(analyzedAt);
+  const ageDays = Math.floor((Date.now() - date.getTime()) / 86_400_000);
+  const stale = ageDays > STALE_ANALYSIS_DAYS;
+  return (
+    <span
+      className={stale ? "text-warning" : "text-muted-foreground"}
+      title={stale ? "Analyse ancienne — pensez à ré-analyser" : undefined}
+    >
+      {date.toLocaleDateString("fr-FR")}
+    </span>
+  );
+}
 
 const HIDDEN_COLS_STORAGE_KEY = "ch-business-table-hidden";
 
@@ -189,6 +216,7 @@ export interface BusinessRow {
   digitalScore: number | null;
   priority: string | null;
   analysisStatus: string | null;
+  analyzedAt: string | null;
   contactEmails: string[];
 }
 
@@ -389,6 +417,11 @@ export function BusinessTable({
                     Priorité
                   </ResizableTh>
                 )}
+                {show("analyzedAt") && (
+                  <ResizableTh colKey="analyzedAt" {...thProps} className="hidden xl:table-cell">
+                    Analysé le
+                  </ResizableTh>
+                )}
                 {extraColumns?.map((col) => (
                   <th
                     key={col.header}
@@ -448,7 +481,16 @@ export function BusinessTable({
                   )}
                   {show("website") && (
                   <td className="px-4 py-3 hidden lg:table-cell">
-                    {b.website ? (
+                    {b.analysisStatus === "SITE_DOWN" ? (
+                      <span className="flex items-center gap-2">
+                        <SiteDownBadge />
+                        {b.website && (
+                          <span className="text-muted-foreground line-through truncate max-w-[140px]">
+                            {b.website}
+                          </span>
+                        )}
+                      </span>
+                    ) : b.website ? (
                       <a
                         href={b.website.startsWith("http") ? b.website : `https://${b.website}`}
                         target="_blank"
@@ -497,6 +539,11 @@ export function BusinessTable({
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}
+                    </td>
+                  )}
+                  {show("analyzedAt") && (
+                    <td className="px-4 py-3 hidden xl:table-cell text-xs">
+                      <AnalyzedAtCell analyzedAt={b.analyzedAt} />
                     </td>
                   )}
                   {extraColumns?.map((col) => (
@@ -623,7 +670,9 @@ function BusinessCard({
 
       {/* Row 3: website */}
       <div className="mt-1">
-        {b.website ? (
+        {b.analysisStatus === "SITE_DOWN" ? (
+          <SiteDownBadge />
+        ) : b.website ? (
           <a
             href={b.website.startsWith("http") ? b.website : `https://${b.website}`}
             target="_blank"

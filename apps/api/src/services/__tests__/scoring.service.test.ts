@@ -345,4 +345,37 @@ describe("scoreAnalysis", () => {
     // Business without website = maximum opportunity → priority forced to HIGH
     expect(result.priority).toBe("HIGH");
   });
+
+  it("handles SITE_DOWN business — forced HIGH priority, zero SEO, collapsed digital score", () => {
+    // Champs vides : le worker purge l'analyse quand le site est injoignable
+    const analysis = makeAnalysis({ status: "SITE_DOWN" });
+    const business = makeBusiness();
+
+    const result = scoreAnalysis(analysis, business);
+
+    expect(result.seoScore).toBe(0);
+    // Le site est mort : la présence en ligne ne vaut rien, il ne reste que
+    // les composantes données/taille (20 % max)
+    expect(result.digitalScore).toBeLessThanOrEqual(20);
+    expect(result.priority).toBe("HIGH");
+  });
+
+  it("SITE_DOWN ignores stale values from a previous successful analysis", () => {
+    const analysis = makeAnalysis({
+      status: "SITE_DOWN",
+      isHttps: true,
+      httpStatusCode: 200,
+      title: "Vieux titre de mars",
+      performanceScore: 90,
+      hasViewport: true,
+      rawAnalysisJson: { isPageWeightOk: true },
+    });
+    const business = makeBusiness();
+
+    const result = scoreAnalysis(analysis, business);
+
+    expect(result.seoScore).toBe(0);
+    expect(result.digitalScore).toBeLessThanOrEqual(20);
+    expect(result.priority).toBe("HIGH");
+  });
 });

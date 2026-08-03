@@ -1,6 +1,6 @@
-import type { PrismaClient } from "@commercehunter/db";
+import { Prisma, type PrismaClient } from "@commercehunter/db";
 import type { FastifyBaseLogger } from "fastify";
-import { SeoAnalyzerService } from "../services/seo-analyzer.service.js";
+import { SeoAnalyzerService, SiteUnreachableError } from "../services/seo-analyzer.service.js";
 import { PageSpeedService } from "../services/pagespeed.service.js";
 import { scoreAnalysis } from "../services/scoring.service.js";
 import { QuotaService } from "../services/quota.service.js";
@@ -176,11 +176,12 @@ export async function processAnalyses(
   }
 
   // ─── Rendre au quota les analyses en échec ────────────
-  // Seules les entreprises avec site ont réservé du quota.
+  // Seules les entreprises avec site ont réservé du quota. Les sites morts
+  // (SITE_DOWN) ne sont pas facturés non plus, comme les sans-site.
   const failedCount = await prisma.analysis.count({
     where: {
       businessId: { in: withWebsite.map((b) => b.id) },
-      status: "FAILED",
+      status: { in: ["FAILED", "SITE_DOWN"] },
     },
   });
   if (failedCount > 0) {
@@ -331,6 +332,11 @@ export async function analyzeSingleBusiness(
       "Business analysis completed",
     );
   } catch (err) {
+    if (err instanceof SiteUnreachableError) {
+      await markSiteDown(businessId, websiteUrl, prisma, log);
+      return;
+    }
+
     const errorMessage = err instanceof Error ? err.message : "Unknown error";
     log.error({ err, businessId, url: websiteUrl }, "Business analysis failed");
 
@@ -340,6 +346,89 @@ export async function analyzeSingleBusiness(
         status: "FAILED",
         errorMessage,
       },
+    });
+  }
+}
+
+// Site durablement injoignable : c'est un RÉSULTAT (prospect chaud), pas une
+// erreur. On purge les valeurs d'une éventuelle analyse antérieure pour que
+// tableau et fiche racontent la même histoire, et on score comme sans-site.
+async function markSiteDown(
+  businessId: string,
+  websiteUrl: string,
+  prisma: PrismaClient,
+  log: FastifyBaseLogger,
+): Promise<void> {
+  log.warn({ businessId, url: websiteUrl }, "Site unreachable — marking SITE_DOWN");
+
+  const wiped = await prisma.analysis.update({
+    where: { businessId },
+    data: {
+      status: "SITE_DOWN",
+      errorMessage: "Site injoignable (domaine mort ou serveur arrêté)",
+      analyzedUrl: websiteUrl,
+      isHttps: null,
+      httpStatusCode: null,
+      responseTimeMs: null,
+      hasRobotsTxt: null,
+      hasSitemapXml: null,
+      title: null,
+      titleLength: null,
+      metaDescription: null,
+      metaDescriptionLength: null,
+      h1: null,
+      hasCanonical: null,
+      hasFavicon: null,
+      hasViewport: null,
+      mobileScore: null,
+      cityInTitle: null,
+      cityInH1: null,
+      cityInDescription: null,
+      hasSchemaLocalBusiness: null,
+      hasGoogleMapsEmbed: null,
+      performanceScore: null,
+      lcpMs: null,
+      clsScore: null,
+      ttfbMs: null,
+      fcpMs: null,
+      totalImages: null,
+      imagesWithAlt: null,
+      hasHsts: null,
+      hasCsp: null,
+      hasXFrameOptions: null,
+      hasXContentTypeOptions: null,
+      h1Count: null,
+      h2Count: null,
+      h3Count: null,
+      hasProperHeadingHierarchy: null,
+      internalLinkCount: null,
+      externalLinkCount: null,
+      hasOgTags: null,
+      hasTwitterCard: null,
+      structuredDataTypes: [],
+      contactEmails: [],
+      wordCount: null,
+      textRatio: null,
+      hasOgImage: null,
+      jsonLdInvalidCount: null,
+      detectedPlatform: null,
+      isFreeHosting: null,
+      brokenLinksCount: null,
+      checkedLinksCount: null,
+      rawAnalysisJson: Prisma.DbNull,
+      aiRecommendations: Prisma.DbNull,
+      aiRecommendationsAt: null,
+      seoScore: 0,
+      analyzedAt: new Date(),
+    },
+  });
+
+  const business = await prisma.business.findUnique({ where: { id: businessId } });
+  if (business) {
+    const scores = scoreAnalysis(wiped, business);
+    await prisma.analysis.update({
+      where: { id: wiped.id },
+      data: { digitalScore: scores.digitalScore, priority: scores.priority },
     });
   }
 }

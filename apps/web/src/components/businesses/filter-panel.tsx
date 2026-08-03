@@ -163,6 +163,7 @@ export function FilterPanel({ values, onChange }: FilterPanelProps) {
           <option value="RUNNING">En cours</option>
           <option value="FAILED">Échouée</option>
           <option value="NO_WEBSITE">Sans site web</option>
+          <option value="SITE_DOWN">Site injoignable</option>
         </select>
       </div>
 

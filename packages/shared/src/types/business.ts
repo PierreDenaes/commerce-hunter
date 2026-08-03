@@ -72,6 +72,7 @@ export type AnalysisStatus =
   | "RUNNING"
   | "COMPLETED"
   | "FAILED"
-  | "NO_WEBSITE";
+  | "NO_WEBSITE"
+  | "SITE_DOWN";
 
 export type Priority = "HIGH" | "MEDIUM" | "LOW";

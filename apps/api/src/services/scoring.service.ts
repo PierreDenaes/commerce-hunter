@@ -115,13 +115,18 @@ export function calculateDigitalScore(
 ): number {
   const seoScore = analysis.seoScore ?? 0;
 
+  // Site injoignable (domaine mort…) : la présence en ligne ne vaut rien,
+  // quelles que soient les valeurs restées d'une analyse antérieure.
+  const siteDown = analysis.status === "SITE_DOWN";
+
   // SEO component (40%)
-  const seoComponent = seoScore * SCORING_WEIGHTS.seo;
+  const seoComponent = (siteDown ? 0 : seoScore) * SCORING_WEIGHTS.seo;
 
   // Presence component (25%): has website = 100, no website = 0.
   // Un « site » sur sous-domaine gratuit / page de plateforme (Wix gratuit,
   // Facebook…) compte comme une présence dégradée.
-  const hasWebsite = business.website !== null && business.website !== "";
+  const hasWebsite =
+    !siteDown && business.website !== null && business.website !== "";
   let presenceScore = hasWebsite ? 100 : 0;
   if (hasWebsite && analysis.isFreeHosting === true) {
     presenceScore -= SEO_SCORE_PENALTIES.freeHostingPresencePenalty;
@@ -130,7 +135,9 @@ export function calculateDigitalScore(
 
   // Mobile component (15%): use performanceScore if available, fallback to mobileScore/viewport
   let mobileScoreValue = 0;
-  if (analysis.performanceScore !== null && analysis.performanceScore !== undefined) {
+  if (siteDown) {
+    mobileScoreValue = 0;
+  } else if (analysis.performanceScore !== null && analysis.performanceScore !== undefined) {
     mobileScoreValue = analysis.performanceScore;
   } else if (analysis.mobileScore !== null) {
     mobileScoreValue = analysis.mobileScore;
@@ -177,14 +184,17 @@ export function scoreAnalysis(
   analysis: Analysis,
   business: Business,
 ): ScoringResult {
-  const seoScore = calculateSeoScore(analysis);
+  const siteDown = analysis.status === "SITE_DOWN";
+  const seoScore = siteDown ? 0 : calculateSeoScore(analysis);
   // Temporarily set seoScore on the analysis for digitalScore calculation
   const analysisWithSeo = { ...analysis, seoScore };
   const digitalScore = calculateDigitalScore(analysisWithSeo, business);
 
-  // Business without website = maximum opportunity → force HIGH priority
+  // Business without website = maximum opportunity → force HIGH priority.
+  // Un site mort est une opportunité équivalente (ils ont déjà eu un site).
   const hasWebsite = business.website !== null && business.website !== "";
-  const priority = hasWebsite ? assignPriority(digitalScore) : "HIGH";
+  const priority =
+    hasWebsite && !siteDown ? assignPriority(digitalScore) : "HIGH";
 
   return { seoScore, digitalScore, priority };
 }
